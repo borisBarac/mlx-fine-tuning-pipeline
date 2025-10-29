@@ -1,0 +1,31 @@
+[project]
+name = "f1-pipeline"
+version = "0.1.0"
+description = "A comprehensive F1 racing data processing pipeline combining MLX for model training, Metaflow for workflow orchestration, and Polars for high-performance data processing"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "metaflow==2.19.3",
+    "mlx-lm==0.28.3",
+    "numpy==2.3.4",
+    "ollama==0.6.0",
+    "polars==1.34.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/f1-pipeline"
+Repository = "https://github.com/your-username/f1-pipeline"
+Documentation = "https://docs.example.com"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "pytest-cov==7.0.0",
+]
