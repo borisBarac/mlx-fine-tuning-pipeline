@@ -1,3 +1,4 @@
+import os
 import types
 
 from huggingface_hub import login
@@ -6,10 +7,9 @@ from mlx_lm.lora import train_model as lora_train_model
 from mlx_lm.tuner.datasets import load_dataset
 from mlx_lm.utils import load
 
-# METAFLOW CAN NOT ACCESS ENV VARIABLES LOCALLY, it needs aws or azure secret manager
-# https://docs.metaflow.org/scaling/secrets
-# So we login programmatically here
-login(token="your HF token goes here")
+hf_token = os.environ.get("HF_TOKEN")
+if hf_token:
+    login(token=hf_token)
 
 
 def train_model(data="LLM/data", iters=600, batch_size=4):

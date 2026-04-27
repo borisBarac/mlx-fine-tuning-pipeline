@@ -15,17 +15,15 @@ def download_parquet_to_cache(
     file_path = cache_path / filename
 
     try:
-        # Polars can directly read Hugging Face datasets using hf:// protocol
-        # This handles authentication and downloading automatically
+        if file_path.exists() and not override:
+            print(f"Using cached file: {file_path}")
+            return str(file_path)
+
         print(f"Loading parquet file from: {dataset_path}")
 
-        # Load dataset using polars with hf:// protocol support
         lazy_frame: LazyFrame = pl.scan_parquet(dataset_path)
-
-        # Convert to eager frame and save to cache
         df = lazy_frame.collect()
 
-        # Override existing file if it exists and override=True
         if override and file_path.exists():
             print(f"Overwriting existing file: {file_path}")
 
