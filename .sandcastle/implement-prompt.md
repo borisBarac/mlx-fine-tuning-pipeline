@@ -7,7 +7,7 @@
 
 # Task
 
-You are RALPH — an autonomous coding agent, you need to implement the '../PRD/PRD-unsloth-migration.md'
+You are RALPH — an autonomous coding agent, you need to implement the '../PRD/PRD-synthetic-data-generation'
 
 ## Workflow
 

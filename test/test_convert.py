@@ -255,3 +255,45 @@ class TestConvertDocumentsPdfParsing:
         assert len(md_files) >= 1
         assert any("testDocument" in f.name for f in md_files)
         assert all(f.read_text(encoding="utf-8").strip() != "" for f in md_files)
+
+
+class TestConvertDocumentsParallel:
+    def test_parallel_conversion_with_multiple_files(self, tmp_path):
+        source = tmp_path / "source"
+        source.mkdir()
+        for i in range(3):
+            (source / f"doc_{i}.txt").write_text(
+                f"Document {i}\n\nContent for doc {i}.\n", encoding="utf-8"
+            )
+
+        output = tmp_path / "output"
+        parquet_path = convert_documents(
+            str(source), str(output), num_threads=2
+        )
+
+        assert Path(parquet_path).exists()
+        df = pl.read_parquet(parquet_path)
+        assert len(df) > 0
+
+        source_files = set(row["source_file"] for row in df.iter_rows(named=True))
+        assert source_files == {"doc_0.txt", "doc_1.txt", "doc_2.txt"}
+
+        report = json.loads(
+            (output / "conversion_report.json").read_text(encoding="utf-8")
+        )
+        assert len(report["successes"]) == 3
+        assert report["failures"] == []
+
+    def test_sequential_fallback_single_file(self, tmp_path):
+        source = tmp_path / "source"
+        source.mkdir()
+        (source / "single.txt").write_text("Only file\n", encoding="utf-8")
+
+        output = tmp_path / "output"
+        parquet_path = convert_documents(
+            str(source), str(output), num_threads=2
+        )
+
+        assert Path(parquet_path).exists()
+        df = pl.read_parquet(parquet_path)
+        assert len(df) > 0

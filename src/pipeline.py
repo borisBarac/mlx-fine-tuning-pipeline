@@ -93,6 +93,13 @@ class ParallelDataFlow(FlowSpec):
         default="none",
     )
 
+    num_threads = Parameter(
+        "num-threads",
+        help="Number of threads per document converter",
+        default=4,
+        type=int,
+    )
+
     @resources(memory=1000, cpu=1)
     @step
     def start(self):
@@ -120,14 +127,16 @@ class ParallelDataFlow(FlowSpec):
 
         self.next(self.convert_documents)
 
-    @resources(memory=1000, cpu=1)
+    @resources(memory=4000, cpu=8)
     @step
     def convert_documents(self):
         """Convert documents to structured text parquet"""
         print("Converting documents...")
 
         self.converted_parquet_path: str = convert_documents(
-            self.docs_path_str, self.docs_output_str
+            self.docs_path_str,
+            self.docs_output_str,
+            num_threads=int(self.num_threads),
         )
 
         print(f"Converted parquet: {self.converted_parquet_path}")

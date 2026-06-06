@@ -1,10 +1,17 @@
 import json
 import logging
+import os
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import polars as pl
 from docling_core.types.doc.labels import DocItemLabel
-from docling.document_converter import DocumentConverter
+from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import ThreadedPdfPipelineOptions
+from docling.document_converter import DocumentConverter, FormatOption
+from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +30,30 @@ LABEL_TO_SECTION_TYPE = {
 
 OUTPUT_PARQUET_NAME = "converted.parquet"
 REPORT_NAME = "conversion_report.json"
+
+
+def _build_converter(num_threads: int) -> DocumentConverter:
+    accelerator_options = AcceleratorOptions(
+        num_threads=num_threads,
+        device=AcceleratorDevice.CPU,
+    )
+
+    pdf_pipeline = ThreadedPdfPipelineOptions(
+        accelerator_options=accelerator_options,
+        ocr_batch_size=4,
+        layout_batch_size=32,
+        table_batch_size=4,
+    )
+
+    return DocumentConverter(
+        format_options={
+            InputFormat.PDF: FormatOption(
+                pipeline_cls=StandardPdfPipeline,
+                backend=DoclingParseDocumentBackend,
+                pipeline_options=pdf_pipeline,
+            ),
+        }
+    )
 
 
 def _should_skip_conversion(source_dir: Path, output_dir: Path) -> bool:
@@ -68,7 +99,55 @@ def _extract_items(doc, source_filename: str) -> list[dict]:
     return rows
 
 
-def convert_documents(source_dir: str, output_dir: str) -> str:
+def _convert_single_file(args: tuple[str, int]) -> dict:
+    source_file_str, num_threads = args
+    source_file = Path(source_file_str)
+    ext = source_file.suffix.lower()
+
+    if ext not in SUPPORTED_EXTENSIONS:
+        return {
+            "filename": source_file.name,
+            "status": "skipped",
+            "rows": [],
+            "markdown_text": None,
+            "error": None,
+        }
+
+    converter = _build_converter(num_threads)
+
+    try:
+        result = converter.convert(source_file_str, raises_on_error=False)
+        if result.status.value != "success":
+            raise RuntimeError(f"Conversion failed with status: {result.status.value}")
+
+        markdown_text = result.document.export_to_markdown()
+        rows = _extract_items(result.document, source_file.name)
+
+        return {
+            "filename": source_file.name,
+            "status": "success",
+            "rows": rows,
+            "markdown_text": markdown_text,
+            "error": None,
+        }
+    except Exception as e:
+        return {
+            "filename": source_file.name,
+            "status": "failure",
+            "rows": [],
+            "markdown_text": None,
+            "error": str(e),
+        }
+
+
+def convert_documents(
+    source_dir: str,
+    output_dir: str,
+    num_threads: int = 4,
+) -> str:
+    os.environ["OMP_NUM_THREADS"] = str(num_threads)
+    os.environ["DOCLING_NUM_THREADS"] = str(num_threads)
+
     source_path = Path(source_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -77,40 +156,58 @@ def convert_documents(source_dir: str, output_dir: str) -> str:
         logger.info("Skipping conversion: output is up-to-date")
         return str(output_path / OUTPUT_PARQUET_NAME)
 
-    converter = DocumentConverter()
+    source_files = sorted(f for f in source_path.iterdir() if f.is_file())
+    convertible = [f for f in source_files if f.suffix.lower() in SUPPORTED_EXTENSIONS]
+
+    max_workers = max(1, (os.cpu_count() or 4) // num_threads)
+
+    if max_workers > 1 and len(convertible) > 1:
+        file_args = [(str(f), num_threads) for f in convertible]
+        logger.info(
+            "Converting %d files with %d workers, %d threads each",
+            len(convertible),
+            max_workers,
+            num_threads,
+        )
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(_convert_single_file, file_args))
+    else:
+        logger.info(
+            "Converting %d files sequentially, %d threads",
+            len(convertible),
+            num_threads,
+        )
+        results = [_convert_single_file((str(f), num_threads)) for f in convertible]
+
     all_rows: list[dict] = []
     successes: list[str] = []
     failures: list[dict] = []
     skipped: list[str] = []
 
-    source_files = sorted(f for f in source_path.iterdir() if f.is_file())
+    skipped_names = {f.name for f in source_files} - {f.name for f in convertible}
+    skipped.extend(sorted(skipped_names))
+    for name in skipped:
+        logger.warning("Skipping unsupported file: %s", name)
 
-    for source_file in source_files:
-        ext = source_file.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
-            skipped.append(source_file.name)
-            logger.warning("Skipping unsupported file: %s", source_file.name)
-            continue
+    for result in results:
+        filename = result["filename"]
+        status = result["status"]
 
-        try:
-            result = converter.convert(str(source_file), raises_on_error=False)
-            if result.status.value != "success":
-                raise RuntimeError(
-                    f"Conversion failed with status: {result.status.value}"
-                )
+        if status == "skipped":
+            skipped.append(filename)
+            logger.warning("Skipping unsupported file: %s", filename)
+        elif status == "success":
+            md_text = result["markdown_text"]
+            if md_text is not None:
+                md_path = output_path / f"{filename}.md"
+                md_path.write_text(md_text, encoding="utf-8")
 
-            markdown_text = result.document.export_to_markdown()
-            md_path = output_path / f"{source_file.name}.md"
-            md_path.write_text(markdown_text, encoding="utf-8")
-
-            rows = _extract_items(result.document, source_file.name)
-            all_rows.extend(rows)
-            successes.append(source_file.name)
-            logger.info("Converted: %s (%d sections)", source_file.name, len(rows))
-
-        except Exception as e:
-            failures.append({"file": source_file.name, "error": str(e)})
-            logger.error("Failed to convert %s: %s", source_file.name, e)
+            all_rows.extend(result["rows"])
+            successes.append(filename)
+            logger.info("Converted: %s (%d sections)", filename, len(result["rows"]))
+        elif status == "failure":
+            failures.append({"file": filename, "error": result["error"]})
+            logger.error("Failed to convert %s: %s", filename, result["error"])
 
     report = {
         "successes": successes,
