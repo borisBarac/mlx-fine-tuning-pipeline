@@ -109,7 +109,7 @@ class ParallelDataFlow(FlowSpec):
         self.output_dir_str: str = str(self.script_dir.parent / "LLM" / "data")
         self.chunk_size_int: int = int(self.chunk_size)  # type: ignore
 
-        if str(self.docs_output):
+        if self.docs_output:
             self.docs_output_str: str = str(self.docs_output)
         else:
             self.docs_output_str: str = str(Path(self.docs_path_str) / "converted")

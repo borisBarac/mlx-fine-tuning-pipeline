@@ -31,11 +31,11 @@ def _should_skip_conversion(source_dir: Path, output_dir: Path) -> bool:
         return False
 
     output_mtime = output_parquet.stat().st_mtime
-    for f in source_dir.iterdir():
-        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS:
-            if f.stat().st_mtime > output_mtime:
-                return False
-    return True
+    return not any(
+        f.stat().st_mtime > output_mtime
+        for f in source_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
 
 
 def _extract_items(doc, source_filename: str) -> list[dict]:
@@ -132,12 +132,7 @@ def convert_documents(source_dir: str, output_dir: str) -> str:
         )
 
     df = pl.DataFrame(
-        {
-            "source_file": [r["source_file"] for r in all_rows],
-            "page_number": [r["page_number"] for r in all_rows],
-            "section_type": [r["section_type"] for r in all_rows],
-            "text_content": [r["text_content"] for r in all_rows],
-        },
+        all_rows,
         schema={
             "source_file": pl.String,
             "page_number": pl.Int64,

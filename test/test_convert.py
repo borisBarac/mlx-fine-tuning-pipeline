@@ -7,8 +7,6 @@ import pytest
 
 from src.data_prep.convert import convert_documents
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
 
 class TestConvertDocumentsHappyPath:
     def test_converts_txt_file_to_parquet(self, tmp_path):
