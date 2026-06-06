@@ -1,115 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "tools": {
-    "write": true,
-    "edit": true,
-    "bash": true,
-    "read": true,
-    "glob": true,
-    "grep": true,
-    "list": true,
-    "webfetch": true
-  },
   "permission": {
     "bash": "allow"
   },
   "agent": {
     "build": {
-      "mode": "primary",
-      "description": "Full development agent with all tools enabled for F1 pipeline work",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true,
-        "read": true,
-        "glob": true,
-        "grep": true,
-        "list": true,
-        "webfetch": true
-      }
-    },
-    "plan": {
-      "mode": "primary",
-      "description": "Planning and analysis agent for F1 pipeline without making changes",
-      "temperature": 0.1,
-      "permission": {
-        "write": "ask",
-        "edit": "ask",
-        "bash": "ask"
-      },
-      "tools": {
-        "write": false,
-        "edit": false,
-        "bash": false,
-        "read": true,
-        "glob": true,
-        "grep": true,
-        "list": true,
-        "webfetch": true
-      }
-    },
-    "python": {
-      "mode": "primary",
-      "description": "Python development agent using UV for package and dependency management",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true,
-        "read": true,
-        "glob": true,
-        "grep": true,
-        "list": true,
-        "webfetch": true
-      },
       "command": {
         "run": "uv run",
         "install": "uv add",
         "remove": "uv remove",
         "sync": "uv sync"
       }
-    },
-    "pytest_tester": {
-      "mode": "subagent",
-      "description": "Python testing agent specializing in running tests with pytest and using UV for execution.",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true,
-        "read": true,
-        "glob": true,
-        "grep": true,
-        "list": true,
-        "webfetch": true
-      },
-      "command": {
-        "run": "uv run pytest",
-        "run_file": "uv run pytest --pyargs src {filename}",
-        "install": "uv add",
-        "remove": "uv remove",
-        "sync": "uv sync"
-      }
-    }
-  },
-  "command": {
-    "test": {
-      "description": "Run pytest tests for F1 pipeline",
-      "template": "Run the full test suite for the F1 pipeline using pytest. Show any failures and suggest fixes. You can use the @pytest_tester agent to white the tests",
-      "agent": "python"
-    },
-    "lint": {
-      "description": "Run linting and formatting checks",
-      "template": "Run linting and formatting checks for the F1 pipeline. Use ruff for linting and fix any issues found.",
-      "agent": "python"
-    },
-    "review-changes": {
-      "description": "Review code changes for quality and best practices",
-      "template": "Review recent code changes for quality, performance, and adherence to F1 Python standards. Provide feedback on improvements.",
-      "agent": "python"
-    },
-    "plan": {
-      "description": "Create a development plan for F1 pipeline without modifying files",
-      "template": "Focus on the mentioned files, there is no need to analyze the whole codebase unless instructed to do so.",
-      "agent": "plan"
     }
   }
 }
