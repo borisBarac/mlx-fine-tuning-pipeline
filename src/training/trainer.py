@@ -45,21 +45,20 @@ def train_model(
         "json", data_files={"train": f"{data}/train.jsonl"}, split="train"
     )
 
-    from trl import SFTTrainer
-    from transformers import TrainingArguments
+    from trl import SFTTrainer, SFTConfig
 
     trainer = SFTTrainer(
         model=model_obj,
         tokenizer=tokenizer,
         train_dataset=dataset,
         dataset_text_field="text",
-        max_seq_length=max_seq_length,
-        args=TrainingArguments(
+        args=SFTConfig(
             per_device_train_batch_size=batch_size,
             max_steps=iters,
             learning_rate=learning_rate,
             output_dir=f"adapters/{backend}",
             logging_steps=10,
+            max_length=max_seq_length,
         ),
     )
 
@@ -76,14 +75,17 @@ def train_model(
 
 
 def export_model(adapter_dir, export_format="safetensors"):
+    if export_format != "safetensors":
+        print(f"Warning: unsupported export format '{export_format}'. No export performed.")
+        return
+
     from unsloth import FastLanguageModel
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(model_name=adapter_dir)
-    if export_format == "safetensors":
-        model_obj.save_pretrained_merged(
-            adapter_dir, tokenizer, save_method="merged_16bit"
-        )
-        print(f"Model exported as safetensors to {adapter_dir}")
+    model_obj.save_pretrained_merged(
+        adapter_dir, tokenizer, save_method="merged_16bit"
+    )
+    print(f"Model exported as safetensors to {adapter_dir}")
 
 
 if __name__ == "__main__":
