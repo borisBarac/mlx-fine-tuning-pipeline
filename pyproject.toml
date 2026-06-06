@@ -5,6 +5,7 @@ description = "A comprehensive F1 racing data processing pipeline combining MLX 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "docling",
     "metaflow==2.19.3",
     "unsloth",
     "numpy==2.3.4",

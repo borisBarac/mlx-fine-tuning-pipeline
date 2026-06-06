@@ -6,23 +6,25 @@ from pathlib import Path
 from metaflow import Parameter, parallel_map, resources, step  # type: ignore
 from metaflow.flowspec import FlowSpec
 
+from data_prep.convert import convert_documents
 from data_prep.create_training_data import merge_jsonl_files
-from data_prep.load import download_parquet_to_cache
 from data_prep.transform import transform_parquet_to_jsonl
 from training.trainer import train_model, export_model
-from utils import is_valid_hf_parquet_link
 
 
 class ParallelDataFlow(FlowSpec):
-    # Get the absolute path to the directory containing this script
     script_dir = Path(__file__).parent.resolve()
 
-    parquet_path = Parameter(
-        "parquet-path",
-        help="Path to input parquet file",
-        default=str(
-            script_dir.parent / "LLM" / "parquet_sets" / "train-00000-of-00001.parquet"
-        ),
+    docs_path = Parameter(
+        "docs-path",
+        help="Path to a directory of documents to convert",
+        default="",
+    )
+
+    docs_output = Parameter(
+        "docs-output",
+        help="Directory for converted output. Defaults to converted/ inside --docs-path",
+        default="",
     )
 
     chunk_size = Parameter(
@@ -94,56 +96,50 @@ class ParallelDataFlow(FlowSpec):
     @resources(memory=1000, cpu=1)
     @step
     def start(self):
-        """Initialize parallel data processing flow"""
-        import time
+        """Initialize pipeline: validate docs-path and begin conversion"""
+        self.docs_path_str: str = str(self.docs_path)
+        if not self.docs_path_str:
+            raise ValueError("--docs-path is required")
 
-        import polars as pl
+        if not Path(self.docs_path_str).is_dir():
+            raise ValueError(
+                f"--docs-path must be an existing directory: {self.docs_path_str}"
+            )
 
         self.output_dir_str: str = str(self.script_dir.parent / "LLM" / "data")
+        self.chunk_size_int: int = int(self.chunk_size)  # type: ignore
 
-        # Convert parameters to proper types
-        self.parquet_path_str: str = str(self.parquet_path)
-        self.chunk_size_int: int = int(self.chunk_size)  # type: ignore  # Metaflow handles type conversion
+        if str(self.docs_output):
+            self.docs_output_str: str = str(self.docs_output)
+        else:
+            self.docs_output_str: str = str(Path(self.docs_path_str) / "converted")
 
-        print("Starting parallel data processing")
-        print(f"Input: {self.parquet_path_str}")
-        print(f"Output: {self.output_dir_str}")
-        print(f"Chunk size: {self.chunk_size_int} rows")
+        print("Starting pipeline")
+        print(f"Documents: {self.docs_path_str}")
+        print(f"Output: {self.docs_output_str}")
 
-        # Ensure parquet file exists
-        if not Path(self.parquet_path_str).exists():
-            if not is_valid_hf_parquet_link(self.parquet_path_str):
-                raise ValueError(
-                    f"The parquet-path parameter must be a valid local path or a Hugging Face parquet link, and the value we got is: `{self.parquet_path_str}`"
-                )
+        self.next(self.convert_documents)
 
-            print("Downloading parquet file...")
-            self.parquet_path_str = download_parquet_to_cache(self.parquet_path_str)
-            print("Downloading parquet file completed.")
+    @resources(memory=1000, cpu=1)
+    @step
+    def convert_documents(self):
+        """Convert documents to structured text parquet"""
+        print("Converting documents...")
 
-        # Get dataset metadata
-        start_time = time.time()
-        df_meta = pl.scan_parquet(self.parquet_path_str)
-        self.total_rows = df_meta.select(pl.len()).collect().item()
-        self.metadata_time = time.time() - start_time
-
-        print(
-            f"Dataset contains {self.total_rows:,} rows (metadata loaded in {self.metadata_time:.2f}s)"
+        self.converted_parquet_path: str = convert_documents(
+            self.docs_path_str, self.docs_output_str
         )
 
-        # Calculate chunks
-        self.num_chunks = (
-            self.total_rows + self.chunk_size_int - 1
-        ) // self.chunk_size_int
-        self.chunks = []
+        print(f"Converted parquet: {self.converted_parquet_path}")
+        self.next(self.generate_qa)
 
-        for i in range(self.num_chunks):
-            start_row = i * self.chunk_size_int
-            end_row = min((i + 1) * self.chunk_size_int, self.total_rows)
-            self.chunks.append((start_row, end_row))
-
-        print(f"Processing {self.num_chunks} chunks in parallel")
-        self.next(self.process_chunks)
+    @resources(memory=1000, cpu=1)
+    @step
+    def generate_qa(self):
+        """Generate QA pairs from converted documents (placeholder)"""
+        raise NotImplementedError(
+            "generate_qa step not yet implemented. See PRD-synthetic-data-generation."
+        )
 
     @resources(memory=1000, cpu=2)
     @step
@@ -151,9 +147,21 @@ class ParallelDataFlow(FlowSpec):
         """Process data chunks in parallel using parallel_map"""
         import time
 
-        print(f"Processing {len(self.chunks)} chunks in parallel...")
+        print(f"Processing chunks from: {self.parquet_path_str}")
 
-        # Create temporary directory for chunk outputs
+        self.metadata_time = 0.0
+
+        self.num_chunks = (
+            self.total_rows + self.chunk_size_int - 1
+        ) // self.chunk_size_int
+        self.chunks = []
+        for i in range(self.num_chunks):
+            start_row = i * self.chunk_size_int
+            end_row = min((i + 1) * self.chunk_size_int, self.total_rows)
+            self.chunks.append((start_row, end_row))
+
+        print(f"Processing {self.num_chunks} chunks in parallel")
+
         self.temp_dir = tempfile.mkdtemp(prefix="parallel_chunks_")
         print(f"Using temporary directory: {self.temp_dir}")
 

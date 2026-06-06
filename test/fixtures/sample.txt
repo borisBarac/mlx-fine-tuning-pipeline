@@ -1,0 +1,14 @@
+# Sample Document
+
+This is a sample text file for testing document conversion.
+
+## Section One
+
+The quick brown fox jumps over the lazy dog. This paragraph contains
+enough text to verify that the conversion pipeline extracts content correctly.
+
+## Section Two
+
+- First list item
+- Second list item
+- Third list item
