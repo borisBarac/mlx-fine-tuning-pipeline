@@ -12,7 +12,7 @@ def transform_parquet_to_jsonl(
 ) -> str:
     """
     Transform a parquet file with 'instruction' and 'output' columns
-    to a JSONL file with 'prompt' and 'completion' fields.
+    to a JSONL file with HuggingFace chat format messages.
 
     Args:
         parquet_path: Path to input parquet file
@@ -25,24 +25,20 @@ def transform_parquet_to_jsonl(
         FileNotFoundError: If input parquet file doesn't exist
         ValueError: If required columns are missing or data is malformed
     """
-    # Validate input file exists
     input_file = Path(parquet_path)
     if not input_file.exists():
         raise FileNotFoundError(f"Input parquet file not found: {parquet_path}")
 
-    # Load parquet with polars
     try:
         df = pl.read_parquet(parquet_path)
     except Exception as e:
         raise ValueError(f"Failed to read parquet file: {str(e)}")
 
-    # Validate required columns exist
     required_columns = ["instruction", "output"]
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing required columns: {missing_columns}")
 
-    # Check if row_range is specified and apply it
     if row_range is not None:
         start_row, end_row = row_range
         if start_row < 0 or end_row > len(df) or start_row >= end_row:
@@ -51,7 +47,6 @@ def transform_parquet_to_jsonl(
             )
         df = df.slice(start_row, end_row - start_row)
 
-    # Filter malformed data (null/empty values)
     df_clean = df.filter(
         (
             pl.col("instruction").is_not_null()
@@ -60,23 +55,22 @@ def transform_parquet_to_jsonl(
         & (pl.col("output").is_not_null() & (pl.col("output").str.len_chars() > 0))
     )
 
-    # Transform columns: instruction -> prompt, output -> completion
-    df_transformed = df_clean.select(
-        [pl.col("instruction").alias("prompt"), pl.col("output").alias("completion")]
-    )
-
-    # Generate output path if not provided
     if output_path is None:
         input_stem = input_file.stem
         output_file = input_file.parent / f"{input_stem}.jsonl"
     else:
         output_file = Path(output_path)
 
-    # Write as JSONL
     try:
         with open(output_file, "w", encoding="utf-8") as f:
-            for row in df_transformed.iter_rows(named=True):
-                json.dump(row, f, ensure_ascii=False)
+            for row in df_clean.select(["instruction", "output"]).iter_rows(named=True):
+                messages = {
+                    "messages": [
+                        {"role": "user", "content": row["instruction"]},
+                        {"role": "assistant", "content": row["output"]},
+                    ]
+                }
+                json.dump(messages, f, ensure_ascii=False)
                 f.write("\n")
     except Exception as e:
         raise ValueError(f"Failed to write JSONL file: {str(e)}")

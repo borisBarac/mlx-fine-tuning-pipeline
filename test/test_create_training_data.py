@@ -12,13 +12,19 @@ class TestMergeJsonlFiles:
         # Create first valid JSONL file
         file1_path = tmp_path / "file1.jsonl"
         with open(file1_path, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "Hello", "completion": "Hi"}\n')
-            f.write('{"prompt": "How are you?", "completion": "Fine"}\n')
+            f.write(
+                '{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]}\n'
+            )
+            f.write(
+                '{"messages": [{"role": "user", "content": "How are you?"}, {"role": "assistant", "content": "Fine"}]}\n'
+            )
 
         # Create second valid JSONL file
         file2_path = tmp_path / "file2.jsonl"
         with open(file2_path, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "What\'s up?", "completion": "Not much"}\n')
+            f.write(
+                '{"messages": [{"role": "user", "content": "What\'s up?"}, {"role": "assistant", "content": "Not much"}]}\n'
+            )
 
         # Create output file path
         output_path = tmp_path / "merged.jsonl"
@@ -48,12 +54,16 @@ class TestMergeJsonlFiles:
         # Create valid JSONL file
         valid_file = tmp_path / "valid.jsonl"
         with open(valid_file, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "Hello", "completion": "Hi"}\n')
+            f.write(
+                '{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]}\n'
+            )
 
         # Create invalid JSONL file (malformed JSON)
         invalid_file = tmp_path / "invalid.jsonl"
         with open(invalid_file, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "Hello", "completion": "Hi"\n')  # Missing closing brace
+            f.write(
+                '{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}\n'
+            )  # Missing closing brace
 
         # Create non-existent file
         non_existent_file = tmp_path / "non_existent.jsonl"
@@ -142,8 +152,12 @@ class TestMergeJsonlFiles:
         # Create JSONL file with unicode content
         unicode_file = tmp_path / "unicode.jsonl"
         with open(unicode_file, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "Hello 世界", "completion": "Hi 世界"}\n')
-            f.write('{"prompt": "¿Cómo estás?", "completion": "Estoy bien"}\n')
+            f.write(
+                '{"messages": [{"role": "user", "content": "Hello 世界"}, {"role": "assistant", "content": "Hi 世界"}]}\n'
+            )
+            f.write(
+                '{"messages": [{"role": "user", "content": "¿Cómo estás?"}, {"role": "assistant", "content": "Estoy bien"}]}\n'
+            )
 
         output_path = tmp_path / "merged.jsonl"
 
@@ -158,10 +172,10 @@ class TestMergeJsonlFiles:
             assert len(lines) == 2
 
             first_line = json.loads(lines[0].strip())
-            assert "世界" in first_line["prompt"]
+            assert "世界" in first_line["messages"][0]["content"]
 
             second_line = json.loads(lines[1].strip())
-            assert "¿" in second_line["prompt"]
+            assert "¿" in second_line["messages"][0]["content"]
 
     def test_merge_large_file_validation(self, tmp_path):
         """Test that validation only checks first 5 lines of large files."""
@@ -169,7 +183,9 @@ class TestMergeJsonlFiles:
         large_file = tmp_path / "large.jsonl"
         with open(large_file, "w", encoding="utf-8") as f:
             for i in range(100):
-                f.write(f'{{"prompt": "Line {i}", "completion": "Response {i}"}}\n')
+                f.write(
+                    f'{{"messages": [{{"role": "user", "content": "Line {i}"}}, {{"role": "assistant", "content": "Response {i}"}}]}}\n'
+                )
 
         output_path = tmp_path / "merged.jsonl"
 
@@ -183,7 +199,9 @@ class TestMergeJsonlFiles:
         # Create valid JSONL file
         valid_file = tmp_path / "valid.jsonl"
         with open(valid_file, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "Hello", "completion": "Hi"}\n')
+            f.write(
+                '{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]}\n'
+            )
 
         output_path = tmp_path / "merged.jsonl"
 
@@ -201,7 +219,9 @@ class TestMergeJsonlFiles:
         # Create valid JSONL file
         valid_file = tmp_path / "valid.jsonl"
         with open(valid_file, "w", encoding="utf-8") as f:
-            f.write('{"prompt": "Hello", "completion": "Hi"}\n')
+            f.write(
+                '{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}]}\n'
+            )
 
         # Use nested directory for output
         output_dir = tmp_path / "output" / "nested"
