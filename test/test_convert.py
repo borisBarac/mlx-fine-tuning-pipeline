@@ -1,4 +1,5 @@
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -6,6 +7,8 @@ import polars as pl
 import pytest
 
 from src.data_prep.convert import convert_documents
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class TestConvertDocumentsHappyPath:
@@ -185,3 +188,70 @@ class TestConvertDocumentsCaching:
 
         parquet_path_2 = convert_documents(str(source), str(output))
         assert Path(parquet_path_2).stat().st_mtime > first_mtime
+
+
+class TestConvertDocumentsPdfParsing:
+    def _convert_pdf(self, tmp_path):
+        source = tmp_path / "source"
+        source.mkdir()
+        shutil.copy(FIXTURES / "testDocument.pdf", source / "testDocument.pdf")
+        output = tmp_path / "output"
+        parquet_path = convert_documents(str(source), str(output))
+        return output, pl.read_parquet(parquet_path)
+
+    def test_parses_pdf_to_parquet(self, tmp_path):
+        output, df = self._convert_pdf(tmp_path)
+
+        assert set(df.columns) == {
+            "source_file",
+            "page_number",
+            "section_type",
+            "text_content",
+        }
+        assert all(row["source_file"] == "testDocument.pdf" for row in df.iter_rows(named=True))
+        assert len(df) > 0
+        assert all(row["text_content"].strip() != "" for row in df.iter_rows(named=True))
+
+    def test_pdf_text_contains_expected_content(self, tmp_path):
+        _, df = self._convert_pdf(tmp_path)
+
+        all_text = " ".join(row["text_content"] for row in df.iter_rows(named=True))
+        assert "This is a test document to demonstrate a PDF file with multiple pages" in all_text
+        assert "Each page has its unique text content" in all_text
+
+    def test_pdf_has_multiple_pages(self, tmp_path):
+        _, df = self._convert_pdf(tmp_path)
+
+        page_numbers = set(row["page_number"] for row in df.iter_rows(named=True))
+        assert 2 in page_numbers
+        assert 3 in page_numbers
+
+    def test_pdf_section_types_are_valid(self, tmp_path):
+        _, df = self._convert_pdf(tmp_path)
+
+        valid_types = {
+            "text",
+            "title",
+            "section_header",
+            "table",
+            "list_item",
+            "code",
+            "formula",
+        }
+        for row in df.iter_rows(named=True):
+            assert row["section_type"] in valid_types
+
+    def test_pdf_conversion_report_success(self, tmp_path):
+        output, _ = self._convert_pdf(tmp_path)
+
+        report = json.loads((output / "conversion_report.json").read_text(encoding="utf-8"))
+        assert "testDocument.pdf" in report["successes"]
+        assert report["failures"] == []
+
+    def test_pdf_saves_markdown(self, tmp_path):
+        output, _ = self._convert_pdf(tmp_path)
+
+        md_files = list(output.glob("*.md"))
+        assert len(md_files) >= 1
+        assert any("testDocument" in f.name for f in md_files)
+        assert all(f.read_text(encoding="utf-8").strip() != "" for f in md_files)
