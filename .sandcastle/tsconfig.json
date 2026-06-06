@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.mts", "*.ts"]
+}
