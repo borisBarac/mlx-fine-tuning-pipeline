@@ -227,7 +227,7 @@ class TestBuildChunks:
                 "source_file": "mydoc.pdf",
                 "page_number": 3,
                 "section_type": "text",
-                "text_content": "Some content with enough words to be a valid chunk here.",
+                "text_content": " ".join(f"word{i}" for i in range(60)),
             },
         ]
         parquet_path = _make_converted_parquet(tmp_path, rows)
@@ -243,7 +243,7 @@ class TestBuildChunks:
                 "source_file": "doc.txt",
                 "page_number": 1,
                 "section_type": "text",
-                "text_content": "First paragraph with some words to fill it up a bit.",
+                "text_content": " ".join(f"word{i}" for i in range(60)),
             },
             {
                 "source_file": "doc.txt",
@@ -255,7 +255,7 @@ class TestBuildChunks:
                 "source_file": "doc.txt",
                 "page_number": 1,
                 "section_type": "text",
-                "text_content": "Second paragraph with some more words here.",
+                "text_content": " ".join(f"word{i}" for i in range(60, 120)),
             },
         ]
         parquet_path = _make_converted_parquet(tmp_path, rows)
@@ -363,9 +363,7 @@ class TestGenerateDatasetErrorHandling:
                 "source_file": "doc.txt",
                 "page_number": 1,
                 "section_type": "text",
-                "text_content": "Machine learning is a subset of artificial intelligence "
-                "that enables systems to learn and improve from experience without being "
-                "explicitly programmed to do so automatically.",
+                "text_content": " ".join(f"word{i}" for i in range(60)),
             },
             {
                 "source_file": "doc.txt",
@@ -377,8 +375,7 @@ class TestGenerateDatasetErrorHandling:
                 "source_file": "doc.txt",
                 "page_number": 1,
                 "section_type": "text",
-                "text_content": "Deep learning is a subset of machine learning that uses "
-                "neural networks with many layers to analyze various factors of data.",
+                "text_content": " ".join(f"word{i}" for i in range(60, 120)),
             },
         ]
         parquet_path = _make_converted_parquet(tmp_path, rows)
@@ -418,7 +415,7 @@ class TestGenerateDatasetErrorHandling:
         df = pl.read_parquet(output)
         assert len(df) >= 1
 
-    def test_logs_warning_when_fewer_than_half_requested(self, tmp_path):
+    def test_raises_when_fewer_than_half_requested(self, tmp_path):
         parquet_path = _make_converted_parquet(tmp_path)
         client = _mock_client(
             [
@@ -430,8 +427,8 @@ class TestGenerateDatasetErrorHandling:
         )
 
         with patch("src.data_prep.generate.time.sleep"):
-            with patch("src.data_prep.generate.logger") as mock_logger:
-                output = generate_dataset(
+            with pytest.raises(RuntimeError, match="QA pairs generated"):
+                generate_dataset(
                     parquet_path,
                     str(tmp_path / "out"),
                     client,
@@ -439,8 +436,6 @@ class TestGenerateDatasetErrorHandling:
                     100,
                     chunk_size=2000,
                 )
-                mock_logger.warning.assert_called()
-                assert Path(output).exists()
 
     def test_handles_rate_limit_on_all_chunks(self, tmp_path):
         parquet_path = _make_converted_parquet(tmp_path)

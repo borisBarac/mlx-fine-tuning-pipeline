@@ -25,9 +25,9 @@ def _detect_backend():
 
 def _get_training_imports(backend):
     if backend == "cuda":
+        from trl import SFTConfig, SFTTrainer
         from unsloth import FastLanguageModel
         from unsloth.chat_templates import get_chat_template
-        from trl import SFTConfig, SFTTrainer
 
         return FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template
 
@@ -55,8 +55,8 @@ def train_model(
     if backend == "auto":
         backend = _detect_backend()
 
-    FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template = (
-        _get_training_imports(backend)
+    FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template = _get_training_imports(
+        backend
     )
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(
@@ -81,10 +81,21 @@ def train_model(
         "json", data_files={"train": f"{data}/train.jsonl"}, split="train"
     )
 
-    trainer = SFTTrainer(
+    valid_path = f"{data}/valid.jsonl"
+    trainer_kwargs = dict(
         model=model_obj,
         tokenizer=tokenizer,
         train_dataset=dataset,
+    )
+
+    if os.path.isfile(valid_path):
+        valid_dataset = hf_load_dataset(
+            "json", data_files={"valid": valid_path}, split="valid"
+        )
+        trainer_kwargs["eval_dataset"] = valid_dataset
+
+    trainer = SFTTrainer(
+        **trainer_kwargs,
         args=SFTConfig(
             per_device_train_batch_size=batch_size,
             max_steps=iters,
@@ -109,7 +120,9 @@ def train_model(
 
 def export_model(adapter_dir, export_format="safetensors", backend="auto"):
     if export_format != "safetensors":
-        print(f"Warning: unsupported export format '{export_format}'. No export performed.")
+        print(
+            f"Warning: unsupported export format '{export_format}'. No export performed."
+        )
         return
 
     if backend == "auto":

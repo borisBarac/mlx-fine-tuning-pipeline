@@ -108,9 +108,16 @@ def create_training_data(parquet_path: str, output_dir: str) -> tuple[str, str]:
     # Read the transformed data as JSONL
     df = pl.read_ndjson(temp_jsonl)
 
-    # Calculate split point (last 5% for validation)
     total_rows = len(df)
-    split_point = int(total_rows * 0.95)
+
+    if total_rows < 300:
+        validation_pct = 0.15
+    elif total_rows < 1000:
+        validation_pct = 0.10
+    else:
+        validation_pct = 0.05
+
+    split_point = int(total_rows * (1 - validation_pct))
 
     # Split data
     train_df = df.slice(0, split_point)

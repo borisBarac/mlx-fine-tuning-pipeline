@@ -40,7 +40,7 @@ def _build_converter(num_threads: int) -> DocumentConverter:
 
     pdf_pipeline = ThreadedPdfPipelineOptions(
         accelerator_options=accelerator_options,
-        ocr_batch_size=4,
+        do_ocr=False,
         layout_batch_size=32,
         table_batch_size=4,
     )

@@ -262,10 +262,18 @@ class DataPrepFlow(FlowSpec):
 
         df = pl.read_ndjson(temp_combined)
         total_rows = len(df)
-        split_point = int(total_rows * 0.95)
+
+        if total_rows < 300:
+            validation_pct = 0.15
+        elif total_rows < 1000:
+            validation_pct = 0.10
+        else:
+            validation_pct = 0.05
+
+        split_point = int(total_rows * (1 - validation_pct))
 
         print(
-            f"Splitting {total_rows:,} rows: {split_point:,} train, {total_rows - split_point:,} validation"
+            f"Splitting {total_rows:,} rows: {split_point:,} train, {total_rows - split_point:,} validation ({validation_pct * 100:.0f}%)"
         )
 
         train_df = df.slice(0, split_point)

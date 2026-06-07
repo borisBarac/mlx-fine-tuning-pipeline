@@ -1,12 +1,9 @@
 import json
-import logging
 import time
 from pathlib import Path
 
 import polars as pl
 from openai import OpenAI
-
-logger = logging.getLogger(__name__)
 
 TEACHER_SYSTEM_PROMPT = (
     "You are a helpful assistant that generates question-answer pairs "
@@ -25,6 +22,7 @@ TEACHER_USER_PROMPT_TEMPLATE = (
 
 DEFAULT_MIN_QUESTION_WORDS = 5
 DEFAULT_MIN_ANSWER_WORDS = 20
+MIN_CHUNK_WORDS = 50
 API_CALL_DELAY_SECONDS = 0.5
 OUTPUT_PARQUET_NAME = "generated_qa.parquet"
 
@@ -114,7 +112,13 @@ def _build_chunks(df: pl.DataFrame, chunk_size: int) -> list[dict]:
         current_word_count += line_words
 
     flush()
-    return chunks
+    filtered = [c for c in chunks if c["word_count"] >= MIN_CHUNK_WORDS]
+    if len(filtered) < len(chunks):
+        print(
+            f"Filtered {len(chunks) - len(filtered)}/{len(chunks)} chunks "
+            f"below {MIN_CHUNK_WORDS} words"
+        )
+    return filtered
 
 
 def generate_dataset(
@@ -136,6 +140,8 @@ def generate_dataset(
         raise RuntimeError("No text chunks produced from input parquet")
 
     total_chunk_words = sum(c["word_count"] for c in chunks)
+    print(f"Generating {num_examples} QA pairs from {len(chunks)} chunks ({total_chunk_words:,} total words)")
+
     all_qa: list[dict] = []
     fail_count = 0
 
@@ -147,26 +153,21 @@ def generate_dataset(
         try:
             pairs = generate_qa_pairs(chunk["text"], client, model, proportional)
             all_qa.extend(pairs)
-            logger.info(
-                "Chunk %d/%d: generated %d pairs (requested %d)",
-                i + 1,
-                len(chunks),
-                len(pairs),
-                proportional,
+            print(
+                f"Chunk {i + 1}/{len(chunks)}: generated {len(pairs)} pairs (requested {proportional})"
             )
         except Exception as e:
             fail_count += 1
-            logger.error("Chunk %d/%d failed: %s", i + 1, len(chunks), e)
+            print(f"Chunk {i + 1}/{len(chunks)} failed: {e}")
 
         time.sleep(API_CALL_DELAY_SECONDS)
 
     filtered = filter_qa_pairs(all_qa)
+    removed = len(all_qa) - len(filtered)
 
-    logger.info(
-        "Generated %d total, %d after filtering (%d chunk failures)",
-        len(all_qa),
-        len(filtered),
-        fail_count,
+    print(
+        f"Generated {len(all_qa)} total, {len(filtered)} after filtering "
+        f"({removed} removed by min word count, {fail_count} chunk failures)"
     )
 
     if len(filtered) == 0:
@@ -175,11 +176,10 @@ def generate_dataset(
         )
 
     if len(filtered) < num_examples * 0.5:
-        logger.warning(
-            "Only %d/%d requested examples generated (%.0f%%)",
-            len(filtered),
-            num_examples,
-            len(filtered) / num_examples * 100,
+        raise RuntimeError(
+            f"Only {len(filtered)}/{num_examples} QA pairs generated "
+            f"({len(filtered) / num_examples * 100:.0f}%). "
+            f"Training data insufficient — check source documents or reduce --num-examples."
         )
 
     result_df = pl.DataFrame(
@@ -192,6 +192,6 @@ def generate_dataset(
 
     parquet_path = output_path / OUTPUT_PARQUET_NAME
     result_df.write_parquet(parquet_path)
-    logger.info("Wrote %d QA pairs to %s", len(result_df), parquet_path)
+    print(f"Wrote {len(result_df)} QA pairs to {parquet_path}")
 
     return str(parquet_path)
