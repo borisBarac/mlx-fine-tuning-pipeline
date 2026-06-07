@@ -1,0 +1,205 @@
+import json
+import logging
+import time
+from pathlib import Path
+from typing import Optional
+
+import polars as pl
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+TEACHER_SYSTEM_PROMPT = (
+    "You are a helpful assistant that generates question-answer pairs "
+    "based on the provided document content. Generate questions that are "
+    "answerable only from the given content. Each question should be clear "
+    "and specific. Each answer should be comprehensive and accurate based "
+    "on the content provided."
+)
+
+TEACHER_USER_PROMPT_TEMPLATE = (
+    "Based on the following content, generate {num_examples} question-answer pairs. "
+    'Output them as a JSON object with a single key "qa_pairs" containing an array '
+    'of objects with "question" and "answer" fields.\n\n'
+    "Content:\n{content}"
+)
+
+DEFAULT_MIN_QUESTION_WORDS = 5
+DEFAULT_MIN_ANSWER_WORDS = 20
+API_CALL_DELAY_SECONDS = 0.5
+OUTPUT_PARQUET_NAME = "generated_qa.parquet"
+
+
+def generate_qa_pairs(
+    content_chunk: str,
+    client: OpenAI,
+    model: str,
+    num_examples: int,
+) -> list[dict]:
+    prompt = TEACHER_USER_PROMPT_TEMPLATE.format(
+        num_examples=num_examples, content=content_chunk
+    )
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": TEACHER_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+    )
+
+    raw = response.choices[0].message.content or "{}"
+    parsed = json.loads(raw)
+    qa_pairs = parsed.get("qa_pairs", [])
+
+    return [
+        {"question": pair["question"], "answer": pair["answer"]}
+        for pair in qa_pairs
+        if "question" in pair and "answer" in pair
+    ]
+
+
+def filter_qa_pairs(
+    examples: list[dict],
+    min_question_words: int = DEFAULT_MIN_QUESTION_WORDS,
+    min_answer_words: int = DEFAULT_MIN_ANSWER_WORDS,
+) -> list[dict]:
+    filtered = []
+    for ex in examples:
+        question = ex.get("question", "")
+        answer = ex.get("answer", "")
+        if (
+            len(question.split()) >= min_question_words
+            and len(answer.split()) >= min_answer_words
+        ):
+            filtered.append(ex)
+    return filtered
+
+
+def _build_chunks(df: pl.DataFrame, chunk_size: int) -> list[dict]:
+    rows = df.sort("source_file", "page_number").iter_rows(named=True)
+    chunks: list[dict] = []
+    current_lines: list[str] = []
+    current_meta: Optional[dict] = None
+    current_word_count = 0
+
+    def flush():
+        if current_lines and current_meta:
+            text = "\n".join(current_lines)
+            chunks.append(
+                {
+                    "text": f"[Source: {current_meta['source_file']}, Page: {current_meta['page_number']}]\n{text}",
+                    "word_count": current_word_count,
+                }
+            )
+
+    for row in rows:
+        line = row["text_content"].strip()
+        if not line:
+            continue
+
+        line_words = len(line.split())
+        source = row["source_file"]
+        page = row["page_number"]
+        section = row["section_type"]
+
+        if section in ("title", "section_header") and current_lines:
+            flush()
+            current_lines = []
+            current_word_count = 0
+
+        if current_meta is None or current_word_count + line_words > chunk_size:
+            if current_lines:
+                flush()
+            current_lines = []
+            current_word_count = 0
+
+        current_meta = {"source_file": source, "page_number": page}
+        current_lines.append(line)
+        current_word_count += line_words
+
+    flush()
+    return chunks
+
+
+def generate_dataset(
+    input_parquet: str,
+    output_dir: str,
+    client: OpenAI,
+    model: str,
+    num_examples: int,
+    chunk_size: int = 2000,
+) -> str:
+    df = pl.read_parquet(input_parquet)
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    chunks = _build_chunks(df, chunk_size)
+
+    if not chunks:
+        raise RuntimeError("No text chunks produced from input parquet")
+
+    total_chunk_words = sum(c["word_count"] for c in chunks)
+    all_qa: list[dict] = []
+    success_count = 0
+    fail_count = 0
+
+    for i, chunk in enumerate(chunks):
+        proportional = max(
+            1, round(num_examples * chunk["word_count"] / total_chunk_words)
+        )
+
+        try:
+            pairs = generate_qa_pairs(chunk["text"], client, model, proportional)
+            all_qa.extend(pairs)
+            success_count += len(pairs)
+            logger.info(
+                "Chunk %d/%d: generated %d pairs (requested %d)",
+                i + 1,
+                len(chunks),
+                len(pairs),
+                proportional,
+            )
+        except Exception as e:
+            fail_count += 1
+            logger.error("Chunk %d/%d failed: %s", i + 1, len(chunks), e)
+
+        time.sleep(API_CALL_DELAY_SECONDS)
+
+    filtered = filter_qa_pairs(all_qa)
+
+    logger.info(
+        "Generated %d total, %d after filtering (%d chunk failures)",
+        len(all_qa),
+        len(filtered),
+        fail_count,
+    )
+
+    if len(filtered) == 0:
+        raise RuntimeError(
+            "Zero QA pairs generated. Check API connectivity and teacher model."
+        )
+
+    if len(filtered) < num_examples * 0.5:
+        logger.warning(
+            "Only %d/%d requested examples generated (%.0f%%)",
+            len(filtered),
+            num_examples,
+            len(filtered) / num_examples * 100,
+        )
+
+    result_df = pl.DataFrame(
+        {
+            "instruction": [qa["question"] for qa in filtered],
+            "output": [qa["answer"] for qa in filtered],
+        },
+        schema={"instruction": pl.String, "output": pl.String},
+    )
+
+    parquet_path = output_path / OUTPUT_PARQUET_NAME
+    result_df.write_parquet(parquet_path)
+    logger.info("Wrote %d QA pairs to %s", len(result_df), parquet_path)
+
+    return str(parquet_path)

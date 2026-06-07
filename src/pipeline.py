@@ -8,6 +8,7 @@ from metaflow.flowspec import FlowSpec
 
 from data_prep.convert import convert_documents
 from data_prep.create_training_data import merge_jsonl_files
+from data_prep.generate import generate_dataset
 from data_prep.transform import transform_parquet_to_jsonl
 from training.trainer import train_model, export_model
 
@@ -100,6 +101,38 @@ class ParallelDataFlow(FlowSpec):
         type=int,
     )
 
+    teacher_model = Parameter(
+        "teacher-model",
+        help="Model identifier for the teacher model",
+        default="deepseek-chat",
+    )
+
+    num_examples = Parameter(
+        "num-examples",
+        help="Total QA pairs to generate",
+        default=200,
+        type=int,
+    )
+
+    generation_chunk_size = Parameter(
+        "generation-chunk-size",
+        help="Words per chunk fed to the teacher model",
+        default=2000,
+        type=int,
+    )
+
+    api_base = Parameter(
+        "api-base",
+        help="OpenAI-compatible API endpoint URL",
+        default="https://api.deepseek.com/v1",
+    )
+
+    api_key = Parameter(
+        "api-key",
+        help="API key (falls back to OPENAI_API_KEY env var)",
+        default="",
+    )
+
     @resources(memory=1000, cpu=1)
     @step
     def start(self):
@@ -145,10 +178,30 @@ class ParallelDataFlow(FlowSpec):
     @resources(memory=1000, cpu=1)
     @step
     def generate_qa(self):
-        """Generate QA pairs from converted documents (placeholder)"""
-        raise NotImplementedError(
-            "generate_qa step not yet implemented. See PRD-synthetic-data-generation."
+        """Generate QA pairs from converted documents using a teacher model"""
+        from openai import OpenAI
+
+        api_key = str(self.api_key) or os.environ.get("OPENAI_API_KEY", "")
+        if not api_key:
+            raise ValueError(
+                "--api-key or OPENAI_API_KEY environment variable is required"
+            )
+
+        client = OpenAI(api_key=api_key, base_url=str(self.api_base))
+
+        output_dir = str(Path(self.converted_parquet_path).parent / "generated")
+
+        self.parquet_path_str = generate_dataset(
+            input_parquet=self.converted_parquet_path,
+            output_dir=output_dir,
+            client=client,
+            model=str(self.teacher_model),
+            num_examples=int(self.num_examples),
+            chunk_size=int(self.generation_chunk_size),
         )
+
+        print(f"Generated QA pairs: {self.parquet_path_str}")
+        self.next(self.process_chunks)
 
     @resources(memory=1000, cpu=2)
     @step
