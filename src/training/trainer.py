@@ -13,13 +13,12 @@ def train_model(
     batch_size=4,
     backend="mlx",
     model="unsloth/granite-4.0-1b",
-    chat_template="llama-3.1",
+    chat_template=None,
     learning_rate=2e-4,
     lora_rank=64,
     max_seq_length=2048,
 ):
-    from unsloth import FastLanguageModel
-    from unsloth.chat_templates import get_chat_template
+    from mlx_tune import FastLanguageModel, SFTTrainer, SFTConfig
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model,
@@ -30,14 +29,14 @@ def train_model(
     model_obj = FastLanguageModel.get_peft_model(
         model_obj,
         r=lora_rank,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
         lora_alpha=lora_rank,
-        lora_dropout=0,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-        random_state=3407,
     )
 
-    tokenizer = get_chat_template(tokenizer, chat_template=chat_template)
+    if chat_template:
+        from mlx_tune import get_chat_template
+
+        tokenizer = get_chat_template(tokenizer, chat_template=chat_template)
 
     from datasets import load_dataset as hf_load_dataset
 
@@ -45,13 +44,10 @@ def train_model(
         "json", data_files={"train": f"{data}/train.jsonl"}, split="train"
     )
 
-    from trl import SFTTrainer, SFTConfig
-
     trainer = SFTTrainer(
         model=model_obj,
         tokenizer=tokenizer,
         train_dataset=dataset,
-        dataset_text_field="text",
         args=SFTConfig(
             per_device_train_batch_size=batch_size,
             max_steps=iters,
@@ -79,12 +75,10 @@ def export_model(adapter_dir, export_format="safetensors"):
         print(f"Warning: unsupported export format '{export_format}'. No export performed.")
         return
 
-    from unsloth import FastLanguageModel
+    from mlx_tune import FastLanguageModel
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(model_name=adapter_dir)
-    model_obj.save_pretrained_merged(
-        adapter_dir, tokenizer, save_method="merged_16bit"
-    )
+    model_obj.save_pretrained_merged(adapter_dir, tokenizer)
     print(f"Model exported as safetensors to {adapter_dir}")
 
 
@@ -97,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument("--iters", type=int, default=600)
     parser.add_argument("--backend", default="mlx", choices=["mlx", "cuda"])
     parser.add_argument("--model", default="unsloth/granite-4.0-1b")
-    parser.add_argument("--chat-template", default="llama-3.1")
+    parser.add_argument("--chat-template", default=None)
     parser.add_argument("--learning-rate", type=float, default=2e-4)
     parser.add_argument("--lora-rank", type=int, default=64)
     parser.add_argument("--max-seq-length", type=int, default=2048)

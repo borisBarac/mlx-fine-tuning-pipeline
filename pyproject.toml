@@ -13,6 +13,7 @@ dependencies = [
     "ollama==0.6.0",
     "polars==1.34.0",
     "hf_transfer",
+    "mlx-tune>=0.5.1",
 ]
 
 [project.urls]
