@@ -1,0 +1,19 @@
+{%- for message in messages -%}
+    {%- if message['role'] == 'user' -%}
+        {{ '<start_of_turn>user
+' + message['content'] | trim + '<end_of_turn>
+' }}
+    {%- elif message['role'] == 'assistant' -%}
+        {{ '<start_of_turn>model
+' + message['content'] | trim + '<end_of_turn>
+' }}
+    {%- elif message['role'] == 'system' -%}
+        {{ '<start_of_turn>user
+' + message['content'] | trim + '<end_of_turn>
+' }}
+    {%- endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+    {{ '<start_of_turn>model
+' }}
+{%- endif -%}
