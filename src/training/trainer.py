@@ -7,18 +7,57 @@ if hf_token:
     login(token=hf_token)
 
 
+def _detect_backend():
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mlx"
+    except ImportError:
+        pass
+    raise RuntimeError(
+        "No supported accelerator found. "
+        "Requires Apple Silicon (MPS) or NVIDIA GPU (CUDA)."
+    )
+
+
+def _get_training_imports(backend):
+    if backend == "cuda":
+        from unsloth import FastLanguageModel
+        from unsloth.chat_templates import get_chat_template
+        from trl import SFTConfig, SFTTrainer
+
+        return FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template
+
+    from mlx_tune import (
+        FastLanguageModel,
+        SFTConfig,
+        SFTTrainer,
+        get_chat_template,
+    )
+
+    return FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template
+
+
 def train_model(
     data="LLM/data",
     iters=600,
     batch_size=4,
-    backend="mlx",
+    backend="auto",
     model="unsloth/granite-4.0-1b",
     chat_template=None,
     learning_rate=2e-4,
     lora_rank=64,
     max_seq_length=2048,
 ):
-    from mlx_tune import FastLanguageModel, SFTTrainer, SFTConfig
+    if backend == "auto":
+        backend = _detect_backend()
+
+    FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template = (
+        _get_training_imports(backend)
+    )
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model,
@@ -34,8 +73,6 @@ def train_model(
     )
 
     if chat_template:
-        from mlx_tune import get_chat_template
-
         tokenizer = get_chat_template(tokenizer, chat_template=chat_template)
 
     from datasets import load_dataset as hf_load_dataset
@@ -70,12 +107,15 @@ def train_model(
     return adapter_dir
 
 
-def export_model(adapter_dir, export_format="safetensors"):
+def export_model(adapter_dir, export_format="safetensors", backend="auto"):
     if export_format != "safetensors":
         print(f"Warning: unsupported export format '{export_format}'. No export performed.")
         return
 
-    from mlx_tune import FastLanguageModel
+    if backend == "auto":
+        backend = _detect_backend()
+
+    FastLanguageModel, _, _, _ = _get_training_imports(backend)
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(model_name=adapter_dir)
     model_obj.save_pretrained_merged(adapter_dir, tokenizer)
@@ -89,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument("--data", default="LLM/data")
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--iters", type=int, default=600)
-    parser.add_argument("--backend", default="mlx", choices=["mlx", "cuda"])
+    parser.add_argument("--backend", default="auto", choices=["auto", "mlx", "cuda"])
     parser.add_argument("--model", default="unsloth/granite-4.0-1b")
     parser.add_argument("--chat-template", default=None)
     parser.add_argument("--learning-rate", type=float, default=2e-4)

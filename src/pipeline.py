@@ -58,8 +58,8 @@ class ParallelDataFlow(FlowSpec):
 
     backend = Parameter(
         "backend",
-        help="Training backend: mlx or cuda",
-        default="mlx",
+        help="Training backend: auto, mlx, or cuda",
+        default="auto",
     )
 
     model_name = Parameter(
@@ -70,8 +70,8 @@ class ParallelDataFlow(FlowSpec):
 
     chat_template = Parameter(
         "chat-template",
-        help="Chat template name for Unsloth",
-        default="llama-3.1",
+        help="Chat template name",
+        default=None,
     )
 
     learning_rate = Parameter(
@@ -399,7 +399,7 @@ class ParallelDataFlow(FlowSpec):
     @step
     def export_model_step(self):
         print(f"Exporting model as {self.export_format}...")
-        export_model(self.adapter_dir, export_format=str(self.export_format))
+        export_model(self.adapter_dir, export_format=str(self.export_format), backend=str(self.backend))
         self.next(self.end)
 
     @step
