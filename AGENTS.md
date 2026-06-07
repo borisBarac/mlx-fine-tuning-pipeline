@@ -2,7 +2,7 @@
 
 ## Project
 
-Python pipeline for fine-tuning language models on Apple Silicon. Uses Metaflow for orchestration, MLX/Unsloth for training, and Polars for data processing.
+Python pipeline for fine-tuning language models on Apple Silicon and NVIDIA GPUs. Uses Metaflow for orchestration, Unsloth/PyTorch for training (CUDA + MPS), and Polars for data processing.
 
 **This is a Python project.** Node.js/Bun is only used by the Sandcastle agent runner in `.sandcastle/`.
 
@@ -32,4 +32,11 @@ Python pipeline for fine-tuning language models on Apple Silicon. Uses Metaflow 
 
 - Python 3.12
 - uv package manager
-- Apple Silicon (M-series) for MLX training
+- Apple Silicon (M-series) or NVIDIA GPU for training
+
+## E2E Tests
+
+**Do not run e2e tests without explicit user approval.** These tests:
+- Download large models (~5-6GB)
+- Require Apple Silicon GPU
+- Take several minutes to complete

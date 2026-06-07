@@ -8,7 +8,7 @@ A functional ML pipeline that:
 - Loads datasets from multiple sources
 - Processes data in parallel
 - Splits data for training/validation
-- Fine-tunes models with MLX
+- Fine-tunes models with PyTorch (CUDA + MPS)
 - Manages workflows with Metaflow
 
 #### Example Pipeline Run
@@ -38,7 +38,7 @@ uv pip install -r pylock.toml --preview-features pylock
 
 This installs:
 - **Metaflow** - Workflow orchestration
-- **MLX** - Apple's ML framework
+- **PyTorch + Unsloth** - GPU-accelerated training (CUDA & MPS)
 - **Polars** - Fast data processing
 - **Other ML utilities**
 
@@ -57,7 +57,7 @@ The pipeline has 4 main stages:
 1. **Data Loading** - Loads local or remote datasets
 2. **Parallel Processing** - Splits data into chunks for speed
 3. **Data Splitting** - Creates train/validation sets (95%/5%)
-4. **Model Training** - Fine-tunes models with MLX
+4. **Model Training** - Fine-tunes models with PyTorch (CUDA + MPS)
 
 ## Step 4: Run the Pipeline
 
@@ -88,9 +88,9 @@ uv run python ./src/pipeline_ml.py run \
 
 ## Technology Stack
 
-### MLX
-- Apple's ML framework for M1/M2/M3 chips
-- Fast training with GPU acceleration
+### PyTorch + Unsloth
+- GPU-accelerated training on CUDA (NVIDIA) and MPS (Apple Silicon)
+- LoRA fine-tuning via Unsloth
 - Memory efficient
 
 ### Metaflow
@@ -107,7 +107,7 @@ uv run python ./src/pipeline_ml.py run \
 
 ### Key Files
 - `src/data_prep/` - Data loading and transformation
-- `src/mlx/` - Model training code
+- `src/training/` - Model training code
 - `src/pipeline_ml.py` - Main pipeline orchestration
 
 ## Step 5: Data Preparation

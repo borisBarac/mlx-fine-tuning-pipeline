@@ -1,7 +1,7 @@
 [project]
 name = "f1-pipeline"
 version = "0.1.0"
-description = "A comprehensive F1 racing data processing pipeline combining MLX for model training, Metaflow for workflow orchestration, and Polars for high-performance data processing"
+description = "A comprehensive F1 racing data processing pipeline combining PyTorch for model training, Metaflow for workflow orchestration, and Polars for high-performance data processing"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
     "numpy==2.3.4",
     "ollama==0.6.0",
     "polars==1.34.0",
+    "hf_transfer",
 ]
 
 [project.urls]

@@ -1,6 +1,6 @@
-# MLX Fine-Tuning Pipeline
+# Fine-Tuning Pipeline
 
-A Metaflow pipeline that converts raw documents into fine-tuned language models. The pipeline runs locally on Apple Silicon using MLX.
+A Metaflow pipeline that converts raw documents into fine-tuned language models. Supports CUDA (NVIDIA) and MPS (Apple Silicon) backends via PyTorch and Unsloth.
 
 ## Language
 

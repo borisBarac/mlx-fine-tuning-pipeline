@@ -723,6 +723,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "docling" },
+    { name = "hf-transfer" },
     { name = "metaflow" },
     { name = "numpy" },
     { name = "ollama" },
@@ -741,6 +742,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "docling" },
+    { name = "hf-transfer" },
     { name = "metaflow", specifier = "==2.19.3" },
     { name = "numpy", specifier = "==2.3.4" },
     { name = "ollama", specifier = "==0.6.0" },
