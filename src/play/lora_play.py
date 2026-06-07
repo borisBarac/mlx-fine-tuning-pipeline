@@ -1,7 +1,7 @@
 from mlx_lm import generate, load  # type: ignore
 
 BASE_MODEL = "unsloth/gemma-3-1b-it"
-ADAPTER_PATH = "adapters/mlx"
+ADAPTER_PATH = "adapters/lora"
 
 
 def query_model(prompt: str, max_tokens: int = 50) -> str:

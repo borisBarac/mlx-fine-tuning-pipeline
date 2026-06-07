@@ -1,7 +1,7 @@
 [project]
-name = "f1-pipeline"
+name = "lora-pipeline"
 version = "0.1.0"
-description = "A comprehensive F1 racing data processing pipeline combining PyTorch for model training, Metaflow for workflow orchestration, and Polars for high-performance data processing"
+description = "LoRA fine-tuning pipeline for language models on Apple Silicon and NVIDIA GPUs, with Metaflow orchestration and Polars data processing"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,11 +16,6 @@ dependencies = [
     "mlx-tune>=0.5.1",
     "opencv-python-headless>=4.13.0.92",
 ]
-
-[project.urls]
-Homepage = "https://github.com/your-username/f1-pipeline"
-Repository = "https://github.com/your-username/f1-pipeline"
-Documentation = "https://docs.example.com"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
