@@ -37,7 +37,7 @@ class TrainingFlow(FlowSpec):
     model_name = Parameter(
         "model",
         help="HuggingFace model identifier",
-        default="unsloth/granite-4.0-1b",
+        default="unsloth/gemma-3-1b-it",
     )
 
     chat_template = Parameter(

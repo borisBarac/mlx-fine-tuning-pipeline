@@ -65,7 +65,7 @@ class ParallelDataFlow(FlowSpec):
     model_name = Parameter(
         "model",
         help="HuggingFace model identifier",
-        default="unsloth/granite-4.0-1b",
+        default="unsloth/gemma-3-1b-it",
     )
 
     chat_template = Parameter(
@@ -391,15 +391,13 @@ class ParallelDataFlow(FlowSpec):
         self.training_time = time.time() - train_start_time
         print(f"Model training completed in {self.training_time:.2f}s")
 
-        if str(self.export_format) != "none":
-            self.next(self.export_model_step)
-        else:
-            self.next(self.end)
+        self.next(self.export_model_step)
 
     @step
     def export_model_step(self):
-        print(f"Exporting model as {self.export_format}...")
-        export_model(self.adapter_dir, export_format=str(self.export_format), backend=str(self.backend))
+        if str(self.export_format) != "none":
+            print(f"Exporting model as {self.export_format}...")
+            export_model(self.adapter_dir, export_format=str(self.export_format), backend=str(self.backend))
         self.next(self.end)
 
     @step

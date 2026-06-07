@@ -46,7 +46,7 @@ def train_model(
     iters=600,
     batch_size=4,
     backend="auto",
-    model="unsloth/granite-4.0-1b",
+    model="unsloth/gemma-3-1b-it",
     chat_template=None,
     learning_rate=2e-4,
     lora_rank=64,
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--iters", type=int, default=600)
     parser.add_argument("--backend", default="auto", choices=["auto", "mlx", "cuda"])
-    parser.add_argument("--model", default="unsloth/granite-4.0-1b")
+    parser.add_argument("--model", default="unsloth/gemma-3-1b-it")
     parser.add_argument("--chat-template", default=None)
     parser.add_argument("--learning-rate", type=float, default=2e-4)
     parser.add_argument("--lora-rank", type=int, default=64)
