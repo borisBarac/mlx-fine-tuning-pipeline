@@ -3,6 +3,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import polars as pl
 from metaflow import Parameter, parallel_map, resources, step  # type: ignore
 from metaflow.flowspec import FlowSpec
 
@@ -127,6 +128,8 @@ class ParallelDataFlow(FlowSpec):
         default="https://api.deepseek.com/v1",
     )
 
+    # TODO: migrate to Metaflow @secret for secure credential handling
+    # See: https://docs.metaflow.org/api/plugins/secrets
     api_key = Parameter(
         "api-key",
         help="API key (falls back to OPENAI_API_KEY env var)",
@@ -201,6 +204,9 @@ class ParallelDataFlow(FlowSpec):
         )
 
         print(f"Generated QA pairs: {self.parquet_path_str}")
+
+        self.total_rows = len(pl.read_parquet(self.parquet_path_str))
+
         self.next(self.process_chunks)
 
     @resources(memory=1000, cpu=2)

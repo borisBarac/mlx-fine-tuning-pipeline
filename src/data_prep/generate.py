@@ -108,7 +108,8 @@ def _build_chunks(df: pl.DataFrame, chunk_size: int) -> list[dict]:
             current_lines = []
             current_word_count = 0
 
-        current_meta = {"source_file": source, "page_number": page}
+        if not current_lines:
+            current_meta = {"source_file": source, "page_number": page}
         current_lines.append(line)
         current_word_count += line_words
 

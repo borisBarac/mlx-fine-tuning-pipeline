@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import polars as pl
 import pytest
 
 _src_dir = str(Path(__file__).parent.parent / "src")
@@ -36,9 +37,12 @@ def _make_flow_with_converted_parquet(tmp_path):
 
 
 class TestPipelineGenerateQaStep:
+    @patch("pipeline.pl.read_parquet", return_value=pl.DataFrame({"a": range(42)}))
     @patch("pipeline.generate_dataset")
     @patch("openai.OpenAI")
-    def test_sets_parquet_path_str(self, mock_openai_cls, mock_generate, tmp_path):
+    def test_sets_parquet_path_str(
+        self, mock_openai_cls, mock_generate, mock_read_parquet, tmp_path
+    ):
         from pipeline import ParallelDataFlow
 
         flow, output_dir = _make_flow_with_converted_parquet(tmp_path)
@@ -52,16 +56,18 @@ class TestPipelineGenerateQaStep:
         ParallelDataFlow.generate_qa(flow)
 
         assert flow.parquet_path_str == generated_path
+        assert flow.total_rows == 42
         mock_generate.assert_called_once()
         call_kwargs = mock_generate.call_args
         assert call_kwargs.kwargs["model"] == "test-model"
         assert call_kwargs.kwargs["num_examples"] == 2
         flow.next.assert_called_with(flow.process_chunks)
 
+    @patch("pipeline.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)}))
     @patch("pipeline.generate_dataset")
     @patch("openai.OpenAI")
     def test_creates_openai_client_with_params(
-        self, mock_openai_cls, mock_generate, tmp_path
+        self, mock_openai_cls, mock_generate, mock_read_parquet, tmp_path
     ):
         from pipeline import ParallelDataFlow
 
@@ -77,10 +83,11 @@ class TestPipelineGenerateQaStep:
             base_url="https://api.example.com/v1",
         )
 
+    @patch("pipeline.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)}))
     @patch("pipeline.generate_dataset")
     @patch("openai.OpenAI")
     def test_uses_env_var_when_api_key_empty(
-        self, mock_openai_cls, mock_generate, tmp_path
+        self, mock_openai_cls, mock_generate, mock_read_parquet, tmp_path
     ):
         from pipeline import ParallelDataFlow
 
@@ -112,10 +119,11 @@ class TestPipelineGenerateQaStep:
             with pytest.raises(ValueError, match="api-key"):
                 ParallelDataFlow.generate_qa(flow)
 
+    @patch("pipeline.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)}))
     @patch("pipeline.generate_dataset")
     @patch("openai.OpenAI")
     def test_output_dir_is_inside_converted(
-        self, mock_openai_cls, mock_generate, tmp_path
+        self, mock_openai_cls, mock_generate, mock_read_parquet, tmp_path
     ):
         from pipeline import ParallelDataFlow
 
