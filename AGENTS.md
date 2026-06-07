@@ -10,7 +10,9 @@ Python pipeline for fine-tuning language models on Apple Silicon. Uses Metaflow 
 
 - `src/data_prep/` — document loading, transformation, training data creation
 - `src/training/` — model training logic
-- `src/pipeline.py` — Metaflow pipeline entry point
+- `src/pipeline.py` — combined Metaflow pipeline (data prep + training)
+- `src/data_prep_flow.py` — standalone data preparation pipeline
+- `src/training_flow.py` — standalone training pipeline
 - `src/utils.py` — shared utilities
 - `test/` — pytest tests
 - `PRD/` — product requirement documents
