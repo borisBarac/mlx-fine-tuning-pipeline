@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -106,8 +107,8 @@ class TestPipelineGenerateQaStep:
         ParallelDataFlow.convert_documents(flow)
 
         with patch.dict("os.environ", {}, clear=False):
-            if "OPENAI_API_KEY" in __import__("os").environ:
-                del __import__("os").environ["OPENAI_API_KEY"]
+            if "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
             with pytest.raises(ValueError, match="api-key"):
                 ParallelDataFlow.generate_qa(flow)
 

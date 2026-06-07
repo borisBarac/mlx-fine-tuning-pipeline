@@ -2,7 +2,6 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
 import polars as pl
 from openai import OpenAI
@@ -65,23 +64,19 @@ def filter_qa_pairs(
     min_question_words: int = DEFAULT_MIN_QUESTION_WORDS,
     min_answer_words: int = DEFAULT_MIN_ANSWER_WORDS,
 ) -> list[dict]:
-    filtered = []
-    for ex in examples:
-        question = ex.get("question", "")
-        answer = ex.get("answer", "")
-        if (
-            len(question.split()) >= min_question_words
-            and len(answer.split()) >= min_answer_words
-        ):
-            filtered.append(ex)
-    return filtered
+    return [
+        ex
+        for ex in examples
+        if len(ex.get("question", "").split()) >= min_question_words
+        and len(ex.get("answer", "").split()) >= min_answer_words
+    ]
 
 
 def _build_chunks(df: pl.DataFrame, chunk_size: int) -> list[dict]:
     rows = df.sort("source_file", "page_number").iter_rows(named=True)
     chunks: list[dict] = []
     current_lines: list[str] = []
-    current_meta: Optional[dict] = None
+    current_meta: dict | None = None
     current_word_count = 0
 
     def flush():
@@ -104,14 +99,12 @@ def _build_chunks(df: pl.DataFrame, chunk_size: int) -> list[dict]:
         page = row["page_number"]
         section = row["section_type"]
 
-        if section in ("title", "section_header") and current_lines:
+        should_split = (
+            (section in ("title", "section_header") and current_lines)
+            or (current_meta is not None and current_word_count + line_words > chunk_size)
+        )
+        if should_split:
             flush()
-            current_lines = []
-            current_word_count = 0
-
-        if current_meta is None or current_word_count + line_words > chunk_size:
-            if current_lines:
-                flush()
             current_lines = []
             current_word_count = 0
 
@@ -143,7 +136,6 @@ def generate_dataset(
 
     total_chunk_words = sum(c["word_count"] for c in chunks)
     all_qa: list[dict] = []
-    success_count = 0
     fail_count = 0
 
     for i, chunk in enumerate(chunks):
@@ -154,7 +146,6 @@ def generate_dataset(
         try:
             pairs = generate_qa_pairs(chunk["text"], client, model, proportional)
             all_qa.extend(pairs)
-            success_count += len(pairs)
             logger.info(
                 "Chunk %d/%d: generated %d pairs (requested %d)",
                 i + 1,
