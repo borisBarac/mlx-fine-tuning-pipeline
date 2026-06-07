@@ -735,6 +735,7 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "python-dotenv" },
 ]
 
 [package.metadata]
@@ -752,6 +753,7 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = "==8.4.2" },
     { name = "pytest-cov", specifier = "==7.0.0" },
+    { name = "python-dotenv" },
 ]
 
 [[package]]
