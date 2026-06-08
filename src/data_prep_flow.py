@@ -74,12 +74,12 @@ class DataPrepFlow(FlowSpec):
     api_base = Parameter(
         "api-base",
         help="OpenAI-compatible API endpoint URL",
-        default="https://api.deepseek.com/v1",
+        default="",
     )
 
     api_key = Parameter(
         "api-key",
-        help="API key (falls back to OPENAI_API_KEY env var)",
+        help="API key (falls back to OPENROUTER_API_KEY or OPENAI_API_KEY env var)",
         default="",
     )
 
@@ -134,13 +134,23 @@ class DataPrepFlow(FlowSpec):
     def generate_qa(self):
         from openai import OpenAI
 
-        api_key = str(self.api_key) or os.environ.get("OPENAI_API_KEY", "")
+        api_key = (
+            str(self.api_key)
+            or os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("OPENAI_API_KEY", "")
+        )
         if not api_key:
             raise ValueError(
-                "--api-key or OPENAI_API_KEY environment variable is required"
+                "--api-key, OPENROUTER_API_KEY, or OPENAI_API_KEY environment variable is required"
             )
 
-        client = OpenAI(api_key=api_key, base_url=str(self.api_base))
+        api_base = (
+            str(self.api_base)
+            or os.environ.get("OPENROUTER_API_BASE")
+            or "https://openrouter.ai/api/v1"
+        )
+
+        client = OpenAI(api_key=api_key, base_url=api_base)
 
         output_dir = str(Path(self.converted_parquet_path).parent / "generated")
 

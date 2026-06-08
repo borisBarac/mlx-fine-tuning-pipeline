@@ -18,7 +18,6 @@ DATA_DIR = str(BASE_DIR / "data")
 
 BASE_MODEL = "unsloth/gemma-3-1b-it"
 TEACHER_MODEL = os.environ.get("TEACHER_MODEL", "deepseek/deepseek-v4-flash")
-API_BASE = os.environ.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
 NUM_EXAMPLES = 500
 GENERATION_CHUNK_SIZE = 2000
 
@@ -42,13 +41,6 @@ LOAD_IN_4BIT = True
 def main():
     start_time = time.time()
 
-    api_key = (
-        os.environ.get("OPENAI_API_KEY", "")
-        or os.environ.get("OPENROUTER_API_KEY", "")
-    )
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY or OPENROUTER_API_KEY not set in .env")
-
     cmd = [
         sys.executable,
         str(FLOW_FILE),
@@ -58,8 +50,6 @@ def main():
         "--data-output", DATA_DIR,
         "--model", BASE_MODEL,
         "--teacher-model", TEACHER_MODEL,
-        "--api-base", API_BASE,
-        "--api-key", api_key,
         "--num-examples", str(NUM_EXAMPLES),
         "--generation-chunk-size", str(GENERATION_CHUNK_SIZE),
         "--lora-rank", str(LORA_RANK),

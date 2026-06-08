@@ -29,11 +29,6 @@ def pipeline_dirs(tmp_path: Path):
 def test_pipeline_e2e(pipeline_dirs, openrouter_client, teacher_model):
     docs_dir, converted_dir, data_dir = pipeline_dirs
 
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
-    api_base = os.environ.get(
-        "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"
-    )
-
     cmd = [
         sys.executable,
         str(FLOW_FILE),
@@ -52,8 +47,6 @@ def test_pipeline_e2e(pipeline_dirs, openrouter_client, teacher_model):
         "--lora-rank", "4",
         "--max-seq-length", "512",
         "--export-format", "none",
-        "--api-key", api_key,
-        "--api-base", api_base,
         "--teacher-model", teacher_model,
     ]
 
