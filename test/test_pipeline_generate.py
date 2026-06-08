@@ -37,7 +37,9 @@ def _make_flow_with_converted_parquet(tmp_path):
 
 
 class TestPipelineGenerateQaStep:
-    @patch("data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(42)}))
+    @patch(
+        "data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(42)})
+    )
     @patch("data_prep_flow.generate_dataset")
     @patch("openai.OpenAI")
     def test_sets_parquet_path_str(
@@ -63,7 +65,9 @@ class TestPipelineGenerateQaStep:
         assert call_kwargs.kwargs["num_examples"] == 2
         flow.next.assert_called_with(flow.process_chunks)
 
-    @patch("data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)}))
+    @patch(
+        "data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)})
+    )
     @patch("data_prep_flow.generate_dataset")
     @patch("openai.OpenAI")
     def test_creates_openai_client_with_params(
@@ -83,7 +87,9 @@ class TestPipelineGenerateQaStep:
             base_url="https://api.example.com/v1",
         )
 
-    @patch("data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)}))
+    @patch(
+        "data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)})
+    )
     @patch("data_prep_flow.generate_dataset")
     @patch("openai.OpenAI")
     def test_uses_env_var_when_api_key_empty(
@@ -119,7 +125,9 @@ class TestPipelineGenerateQaStep:
             with pytest.raises(ValueError, match="api-key"):
                 DataPrepFlow.generate_qa(flow)
 
-    @patch("data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)}))
+    @patch(
+        "data_prep_flow.pl.read_parquet", return_value=pl.DataFrame({"a": range(10)})
+    )
     @patch("data_prep_flow.generate_dataset")
     @patch("openai.OpenAI")
     def test_output_dir_is_inside_converted(

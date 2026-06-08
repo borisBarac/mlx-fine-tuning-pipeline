@@ -208,15 +208,22 @@ class TestConvertDocumentsPdfParsing:
             "section_type",
             "text_content",
         }
-        assert all(row["source_file"] == "testDocument.pdf" for row in df.iter_rows(named=True))
+        assert all(
+            row["source_file"] == "testDocument.pdf" for row in df.iter_rows(named=True)
+        )
         assert len(df) > 0
-        assert all(row["text_content"].strip() != "" for row in df.iter_rows(named=True))
+        assert all(
+            row["text_content"].strip() != "" for row in df.iter_rows(named=True)
+        )
 
     def test_pdf_text_contains_expected_content(self, tmp_path):
         _, df = self._convert_pdf(tmp_path)
 
         all_text = " ".join(row["text_content"] for row in df.iter_rows(named=True))
-        assert "This is a test document to demonstrate a PDF file with multiple pages" in all_text
+        assert (
+            "This is a test document to demonstrate a PDF file with multiple pages"
+            in all_text
+        )
         assert "Each page has its unique text content" in all_text
 
     def test_pdf_has_multiple_pages(self, tmp_path):
@@ -244,7 +251,9 @@ class TestConvertDocumentsPdfParsing:
     def test_pdf_conversion_report_success(self, tmp_path):
         output, _ = self._convert_pdf(tmp_path)
 
-        report = json.loads((output / "conversion_report.json").read_text(encoding="utf-8"))
+        report = json.loads(
+            (output / "conversion_report.json").read_text(encoding="utf-8")
+        )
         assert "testDocument.pdf" in report["successes"]
         assert report["failures"] == []
 
@@ -267,9 +276,7 @@ class TestConvertDocumentsParallel:
             )
 
         output = tmp_path / "output"
-        parquet_path = convert_documents(
-            str(source), str(output), num_threads=2
-        )
+        parquet_path = convert_documents(str(source), str(output), num_threads=2)
 
         assert Path(parquet_path).exists()
         df = pl.read_parquet(parquet_path)
@@ -290,9 +297,7 @@ class TestConvertDocumentsParallel:
         (source / "single.txt").write_text("Only file\n", encoding="utf-8")
 
         output = tmp_path / "output"
-        parquet_path = convert_documents(
-            str(source), str(output), num_threads=2
-        )
+        parquet_path = convert_documents(str(source), str(output), num_threads=2)
 
         assert Path(parquet_path).exists()
         df = pl.read_parquet(parquet_path)

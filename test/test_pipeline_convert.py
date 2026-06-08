@@ -96,3 +96,36 @@ class TestPipelineConvertDocumentsStep:
         assert flow.converted_parquet_path.endswith("converted.parquet")
         assert Path(flow.converted_parquet_path).exists()
         flow.next.assert_called_once()
+
+
+class TestParallelDataFlowInheritsDataPrepSteps:
+    def test_parallel_data_flow_inherits_start(self, tmp_path):
+        from pipeline import ParallelDataFlow
+
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "sample.txt").write_text("test\n")
+
+        flow = _FlowProxy(docs_path=str(docs_dir))
+        ParallelDataFlow.start(flow)
+        assert flow.docs_path_str == str(docs_dir)
+        flow.next.assert_called_once()
+
+    def test_parallel_data_flow_inherits_convert(self, tmp_path):
+        from pipeline import ParallelDataFlow
+
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "sample.txt").write_text("Hello world\n")
+
+        output_dir = tmp_path / "output"
+
+        flow = MagicMock()
+        flow.docs_path_str = str(docs_dir)
+        flow.docs_output_str = str(output_dir)
+
+        ParallelDataFlow.convert_documents(flow)
+
+        assert hasattr(flow, "converted_parquet_path")
+        assert flow.converted_parquet_path.endswith("converted.parquet")
+        assert Path(flow.converted_parquet_path).exists()

@@ -97,9 +97,8 @@ def _build_chunks(df: pl.DataFrame, chunk_size: int) -> list[dict]:
         page = row["page_number"]
         section = row["section_type"]
 
-        should_split = (
-            (section in ("title", "section_header") and current_lines)
-            or (current_meta is not None and current_word_count + line_words > chunk_size)
+        should_split = (section in ("title", "section_header") and current_lines) or (
+            current_meta is not None and current_word_count + line_words > chunk_size
         )
         if should_split:
             flush()
@@ -140,7 +139,9 @@ def generate_dataset(
         raise RuntimeError("No text chunks produced from input parquet")
 
     total_chunk_words = sum(c["word_count"] for c in chunks)
-    print(f"Generating {num_examples} QA pairs from {len(chunks)} chunks ({total_chunk_words:,} total words)")
+    print(
+        f"Generating {num_examples} QA pairs from {len(chunks)} chunks ({total_chunk_words:,} total words)"
+    )
 
     all_qa: list[dict] = []
     fail_count = 0

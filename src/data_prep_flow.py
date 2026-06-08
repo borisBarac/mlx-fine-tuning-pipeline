@@ -4,13 +4,16 @@ import tempfile
 from pathlib import Path
 
 import polars as pl
-from metaflow import Parameter, parallel_map, resources, step
+from metaflow import Parameter, resources, step
 from metaflow.flowspec import FlowSpec
 
 from data_prep.convert import convert_documents
-from data_prep.create_training_data import merge_jsonl_files
 from data_prep.generate import generate_dataset
-from data_prep.transform import transform_parquet_to_jsonl
+from data_prep.transform import (
+    merge_jsonl_files,
+    process_parquet_in_chunks,
+    split_dataset,
+)
 
 
 class DataPrepFlow(FlowSpec):
@@ -159,93 +162,22 @@ class DataPrepFlow(FlowSpec):
     @resources(memory=1000, cpu=2)
     @step
     def process_chunks(self):
-        import time
-
         print(f"Processing chunks from: {self.parquet_path_str}")
 
-        self.metadata_time = 0.0
-
-        self.num_chunks = (
-            self.total_rows + self.chunk_size_int - 1
-        ) // self.chunk_size_int
-        self.chunks = []
-        for i in range(self.num_chunks):
-            start_row = i * self.chunk_size_int
-            end_row = min((i + 1) * self.chunk_size_int, self.total_rows)
-            self.chunks.append((start_row, end_row))
-
-        print(f"Processing {self.num_chunks} chunks in parallel")
-
         self.temp_dir = tempfile.mkdtemp(prefix="parallel_chunks_")
-        print(f"Using temporary directory: {self.temp_dir}")
 
-        def process_chunk(chunk_info):
-            chunk_idx, (start_row, end_row) = chunk_info
-            chunk_start_time = time.time()
+        result = process_parquet_in_chunks(
+            self.parquet_path_str,
+            chunk_size=self.chunk_size_int,
+            temp_dir=self.temp_dir,
+        )
 
-            try:
-                chunk_output = Path(self.temp_dir) / f"chunk_{chunk_idx:04d}.jsonl"
-
-                output_path = transform_parquet_to_jsonl(
-                    self.parquet_path_str,
-                    str(chunk_output),
-                    row_range=(start_row, end_row),
-                )
-
-                if not Path(output_path).exists():
-                    raise Exception(f"Chunk {chunk_idx} failed to create output file")
-
-                chunk_time = time.time() - chunk_start_time
-                return {
-                    "chunk_idx": chunk_idx,
-                    "start_row": start_row,
-                    "end_row": end_row,
-                    "output_path": output_path,
-                    "processing_time": chunk_time,
-                    "success": True,
-                    "error": None,
-                }
-
-            except Exception as e:
-                return {
-                    "chunk_idx": chunk_idx,
-                    "start_row": start_row,
-                    "end_row": end_row,
-                    "output_path": None,
-                    "processing_time": time.time() - chunk_start_time,
-                    "success": False,
-                    "error": str(e),
-                }
-
-        chunk_inputs = list(enumerate(self.chunks))
-        parallel_start_time = time.time()
-
-        self.chunk_results = parallel_map(process_chunk, chunk_inputs)
-
-        self.parallel_processing_time = time.time() - parallel_start_time
-
-        successful_chunks = [r for r in self.chunk_results if r["success"]]
-        failed_chunks = [r for r in self.chunk_results if not r["success"]]
-
-        print(f"Parallel processing completed in {self.parallel_processing_time:.2f}s")
-        print(f"Successful chunks: {len(successful_chunks)}/{len(self.chunks)}")
-
-        if failed_chunks:
-            print(f"Failed chunks: {len(failed_chunks)}")
-            for failed in failed_chunks:
-                print(f"  Chunk {failed['chunk_idx']}: {failed['error']}")
-            raise Exception(f"{len(failed_chunks)} chunks failed processing")
-
-        self.chunk_files = [r["output_path"] for r in successful_chunks]
+        self.chunk_files = result["chunk_files"]
+        self.num_chunks = result["num_chunks"]
         self.next(self.merge_results)
 
-    @resources(memory=1000, cpu=1)
-    @step
-    def merge_results(self):
-        import json
+    def _do_merge(self):
         import time
-
-        import polars as pl
 
         print("Merging processed chunks...")
         merge_start_time = time.time()
@@ -260,49 +192,26 @@ class DataPrepFlow(FlowSpec):
             f"Merged {merge_result['files_merged']} files with {merge_result['total_lines_merged']} total lines"
         )
 
-        df = pl.read_ndjson(temp_combined)
-        total_rows = len(df)
+        train_path, valid_path = split_dataset(str(temp_combined), self.output_dir_str)
 
-        if total_rows < 300:
-            validation_pct = 0.15
-        elif total_rows < 1000:
-            validation_pct = 0.10
-        else:
-            validation_pct = 0.05
-
-        split_point = int(total_rows * (1 - validation_pct))
-
-        print(
-            f"Splitting {total_rows:,} rows: {split_point:,} train, {total_rows - split_point:,} validation ({validation_pct * 100:.0f}%)"
-        )
-
-        train_df = df.slice(0, split_point)
-        valid_df = df.slice(split_point)
-
-        self.train_file = output_path / "train.jsonl"
-        self.valid_file = output_path / "valid.jsonl"
-
-        with open(self.train_file, "w", encoding="utf-8") as f:
-            for row in train_df.iter_rows(named=True):
-                json.dump(row, f, ensure_ascii=False)
-                f.write("\n")
-
-        with open(self.valid_file, "w", encoding="utf-8") as f:
-            for row in valid_df.iter_rows(named=True):
-                json.dump(row, f, ensure_ascii=False)
-                f.write("\n")
-
+        self.train_file = Path(train_path)
+        self.valid_file = Path(valid_path)
         self.merge_time = time.time() - merge_start_time
 
+        import polars as pl
+
+        train_df = pl.read_ndjson(self.train_file)
+        valid_df = pl.read_ndjson(self.valid_file)
         self.train_samples = len(train_df)
         self.valid_samples = len(valid_df)
         self.total_samples = self.train_samples + self.valid_samples
 
         print(f"Merge completed in {self.merge_time:.2f}s")
-        print("Final files created:")
-        print(f"  Train: {self.train_file} ({self.train_samples:,} samples)")
-        print(f"  Valid: {self.valid_file} ({self.valid_samples:,} samples)")
 
+    @resources(memory=1000, cpu=1)
+    @step
+    def merge_results(self):
+        self._do_merge()
         self.next(self.end)
 
     @step

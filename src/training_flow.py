@@ -4,7 +4,7 @@ from pathlib import Path
 from metaflow import Parameter, resources, step
 from metaflow.flowspec import FlowSpec
 
-from training.trainer import export_model, train_model
+from training.trainer import TrainingConfig, export_model, train_model
 
 
 class TrainingFlow(FlowSpec):
@@ -101,27 +101,30 @@ class TrainingFlow(FlowSpec):
         print("Starting model training...")
         train_start_time = time.time()
 
-        data_path = self.data_path_str
-
-        print(f"Training data path: {data_path}")
-        print(f"Backend: {self.backend}")
-        print(f"Model: {self.model_name}")
-        print(f"Training iterations: {self.training_iters}")
-        print(f"Batch size: {self.batch_size}")
-        print(f"Learning rate: {self.learning_rate}")
-        print(f"LoRA rank: {self.lora_rank}")
-        print(f"Max seq length: {self.max_seq_length}")
-
-        self.adapter_dir = train_model(
-            data=data_path,
+        config = TrainingConfig(
+            data=self.data_path_str,
             iters=int(self.training_iters),
             batch_size=int(self.batch_size),
             backend=str(self.backend),
             model=str(self.model_name),
-            chat_template=str(self.chat_template),
+            chat_template=str(self.chat_template) if self.chat_template else None,
             learning_rate=float(self.learning_rate),
             lora_rank=int(self.lora_rank),
             max_seq_length=int(self.max_seq_length),
+        )
+
+        print(f"Training config: {config}")
+
+        self.adapter_dir = train_model(
+            data=config.data,
+            iters=config.iters,
+            batch_size=config.batch_size,
+            backend=config.backend,
+            model=config.model,
+            chat_template=config.chat_template,
+            learning_rate=config.learning_rate,
+            lora_rank=config.lora_rank,
+            max_seq_length=config.max_seq_length,
         )
 
         self.training_time = time.time() - train_start_time
@@ -135,7 +138,11 @@ class TrainingFlow(FlowSpec):
     @step
     def export_model(self):
         print(f"Exporting model as {self.export_format}...")
-        export_model(self.adapter_dir, export_format=str(self.export_format), backend=str(self.backend))
+        export_model(
+            self.adapter_dir,
+            export_format=str(self.export_format),
+            backend=str(self.backend),
+        )
         self.next(self.end)
 
     @step

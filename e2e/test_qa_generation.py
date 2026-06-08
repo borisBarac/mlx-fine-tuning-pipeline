@@ -7,7 +7,7 @@ import pytest
 
 from data_prep.convert import convert_documents
 from data_prep.generate import generate_dataset
-from data_prep.transform import create_training_data, transform_parquet_to_jsonl
+from data_prep.transform import split_dataset, transform_parquet_to_jsonl
 
 E2E_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = E2E_DIR.parent
@@ -79,8 +79,8 @@ def test_qa_generation_pipeline_e2e(output_dirs, openrouter_client, teacher_mode
         assert record["messages"][0]["content"].strip() != ""
         assert record["messages"][1]["content"].strip() != ""
 
-    train_path, valid_path = create_training_data(
-        generated_parquet, str(OUT_DIR)
+    train_path, valid_path = split_dataset(
+        jsonl_path, str(OUT_DIR)
     )
 
     assert Path(train_path).exists()

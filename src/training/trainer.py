@@ -1,10 +1,40 @@
 import os
+from dataclasses import dataclass
 
-from huggingface_hub import login
 
-hf_token = os.environ.get("HF_TOKEN")
-if hf_token:
-    login(token=hf_token)
+@dataclass
+class TrainingConfig:
+    data: str = "LLM/data"
+    iters: int = 600
+    batch_size: int = 4
+    backend: str = "auto"
+    model: str = "unsloth/gemma-3-1b-it"
+    chat_template: str | None = None
+    learning_rate: float = 2e-4
+    lora_rank: int = 64
+    max_seq_length: int = 2048
+
+    def __post_init__(self):
+        if not self.data:
+            raise ValueError("data path is required")
+        if self.iters <= 0:
+            raise ValueError("iters must be positive")
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if self.lora_rank <= 0:
+            raise ValueError("lora_rank must be positive")
+        if self.max_seq_length <= 0:
+            raise ValueError("max_seq_length must be positive")
+        if self.backend not in ("auto", "cuda", "mlx"):
+            raise ValueError("backend must be one of: auto, cuda, mlx")
+
+
+def _lazy_hf_login():
+    hf_token = os.environ.get("HF_TOKEN")
+    if hf_token:
+        from huggingface_hub import login
+
+        login(token=hf_token)
 
 
 def _detect_backend():
@@ -52,11 +82,13 @@ def train_model(
     lora_rank=64,
     max_seq_length=2048,
 ):
+    _lazy_hf_login()
+
     if backend == "auto":
         backend = _detect_backend()
 
-    FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template = _get_training_imports(
-        backend
+    FastLanguageModel, SFTTrainer, SFTConfig, get_chat_template_fn = (
+        _get_training_imports(backend)
     )
 
     model_obj, tokenizer = FastLanguageModel.from_pretrained(
@@ -73,7 +105,7 @@ def train_model(
     )
 
     if chat_template:
-        tokenizer = get_chat_template(tokenizer, chat_template=chat_template)
+        tokenizer = get_chat_template_fn(tokenizer, chat_template=chat_template)
 
     from datasets import load_dataset as hf_load_dataset
 

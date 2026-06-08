@@ -1,8 +1,10 @@
 import json
+import time
 from pathlib import Path
 from typing import Optional
 
 import polars as pl
+from metaflow import parallel_map
 
 
 def transform_parquet_to_jsonl(
@@ -78,35 +80,69 @@ def transform_parquet_to_jsonl(
     return str(output_file)
 
 
-def create_training_data(parquet_path: str, output_dir: str) -> tuple[str, str]:
-    """
-    Create training data from parquet file, splitting into train and validation sets.
+def merge_jsonl_files(file_paths, output_filename):
+    valid_files = []
+    invalid_files = []
+    total_lines = 0
 
-    Args:
-        parquet_path: Path to input parquet file
-        output_dir: Directory where train.jsonl and valid.jsonl will be created
+    for file_path in file_paths:
+        path = Path(file_path)
+        if not path.exists():
+            invalid_files.append(file_path)
+            continue
 
-    Returns:
-        Tuple of (train_file_path, valid_file_path)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                line_count = 0
+                for i, line in enumerate(f):
+                    if i >= 5:
+                        break
+                    line = line.strip()
+                    if line:
+                        json.loads(line)
+                        line_count += 1
 
-    Raises:
-        FileNotFoundError: If input parquet file doesn't exist
-        ValueError: If required columns are missing or data is malformed
-    """
-    # Validate input file exists
-    input_file = Path(parquet_path)
-    if not input_file.exists():
-        raise FileNotFoundError(f"Input parquet file not found: {parquet_path}")
+                if line_count > 0:
+                    valid_files.append(path)
+                else:
+                    invalid_files.append(file_path)
 
-    # Create output directory
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            invalid_files.append(file_path)
 
-    # Load and transform data using existing function
-    temp_jsonl = transform_parquet_to_jsonl(parquet_path)
+    if valid_files:
+        output_path = Path(output_filename)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Read the transformed data as JSONL
-    df = pl.read_ndjson(temp_jsonl)
+        with open(output_filename, "w", encoding="utf-8") as output_file:
+            for file_path in valid_files:
+                with open(file_path, "r", encoding="utf-8") as input_file:
+                    for line in input_file:
+                        line = line.strip()
+                        if line:
+                            output_file.write(line + "\n")
+                            total_lines += 1
+
+    return {
+        "output_file": output_filename,
+        "valid_files": [str(f) for f in valid_files],
+        "invalid_files": invalid_files,
+        "total_lines_merged": total_lines,
+        "files_merged": len(valid_files),
+        "files_skipped": len(invalid_files),
+    }
+
+
+def split_dataset(combined_jsonl_path: str, output_dir: str) -> tuple[str, str]:
+    if combined_jsonl_path and Path(combined_jsonl_path).exists():
+        df = pl.read_ndjson(combined_jsonl_path)
+    else:
+        chunk_files_sorted = sorted(Path(output_dir).parent.glob("chunk_*.jsonl"))
+        if chunk_files_sorted:
+            dfs = [pl.read_ndjson(f) for f in chunk_files_sorted]
+            df = pl.concat(dfs)
+        else:
+            raise FileNotFoundError("No JSONL data found to split")
 
     total_rows = len(df)
 
@@ -119,27 +155,118 @@ def create_training_data(parquet_path: str, output_dir: str) -> tuple[str, str]:
 
     split_point = int(total_rows * (1 - validation_pct))
 
-    # Split data
+    print(
+        f"Splitting {total_rows:,} rows: {split_point:,} train, "
+        f"{total_rows - split_point:,} validation ({validation_pct * 100:.0f}%)"
+    )
+
     train_df = df.slice(0, split_point)
     valid_df = df.slice(split_point)
 
-    # Define output file paths
-    train_file = output_path / "train.jsonl"
-    valid_file = output_path / "valid.jsonl"
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
 
-    # Write train.jsonl
+    train_file = out / "train.jsonl"
+    valid_file = out / "valid.jsonl"
+
     with open(train_file, "w", encoding="utf-8") as f:
         for row in train_df.iter_rows(named=True):
             json.dump(row, f, ensure_ascii=False)
             f.write("\n")
 
-    # Write valid.jsonl
     with open(valid_file, "w", encoding="utf-8") as f:
         for row in valid_df.iter_rows(named=True):
             json.dump(row, f, ensure_ascii=False)
             f.write("\n")
 
-    # Clean up temporary file
-    Path(temp_jsonl).unlink()
+    print(f"Train: {train_file} ({len(train_df):,} samples)")
+    print(f"Valid: {valid_file} ({len(valid_df):,} samples)")
 
     return str(train_file), str(valid_file)
+
+
+def process_parquet_in_chunks(
+    parquet_path: str,
+    chunk_size: int,
+    temp_dir: str,
+) -> dict:
+    import polars as pl
+
+    total_rows = len(pl.read_parquet(parquet_path))
+
+    num_chunks = (total_rows + chunk_size - 1) // chunk_size
+    chunks = []
+    for i in range(num_chunks):
+        start_row = i * chunk_size
+        end_row = min((i + 1) * chunk_size, total_rows)
+        chunks.append((start_row, end_row))
+
+    print(f"Processing {num_chunks} chunks in parallel")
+    print(f"Using temporary directory: {temp_dir}")
+
+    def process_chunk(chunk_info):
+        chunk_idx, (start_row, end_row) = chunk_info
+        chunk_start_time = time.time()
+
+        try:
+            chunk_output = Path(temp_dir) / f"chunk_{chunk_idx:04d}.jsonl"
+
+            output_path = transform_parquet_to_jsonl(
+                parquet_path,
+                str(chunk_output),
+                row_range=(start_row, end_row),
+            )
+
+            if not Path(output_path).exists():
+                raise Exception(f"Chunk {chunk_idx} failed to create output file")
+
+            chunk_time = time.time() - chunk_start_time
+            return {
+                "chunk_idx": chunk_idx,
+                "start_row": start_row,
+                "end_row": end_row,
+                "output_path": output_path,
+                "processing_time": chunk_time,
+                "success": True,
+                "error": None,
+            }
+
+        except Exception as e:
+            return {
+                "chunk_idx": chunk_idx,
+                "start_row": start_row,
+                "end_row": end_row,
+                "output_path": None,
+                "processing_time": time.time() - chunk_start_time,
+                "success": False,
+                "error": str(e),
+            }
+
+    chunk_inputs = list(enumerate(chunks))
+    parallel_start_time = time.time()
+
+    chunk_results = parallel_map(process_chunk, chunk_inputs)
+
+    parallel_processing_time = time.time() - parallel_start_time
+
+    successful_chunks = [r for r in chunk_results if r["success"]]
+    failed_chunks = [r for r in chunk_results if not r["success"]]
+
+    print(f"Parallel processing completed in {parallel_processing_time:.2f}s")
+    print(f"Successful chunks: {len(successful_chunks)}/{len(chunks)}")
+
+    if failed_chunks:
+        print(f"Failed chunks: {len(failed_chunks)}")
+        for failed in failed_chunks:
+            print(f"  Chunk {failed['chunk_idx']}: {failed['error']}")
+        raise Exception(f"{len(failed_chunks)} chunks failed processing")
+
+    chunk_files = [r["output_path"] for r in successful_chunks]
+
+    return {
+        "chunk_files": chunk_files,
+        "num_chunks": num_chunks,
+        "total_rows": total_rows,
+        "failed_chunks": failed_chunks,
+        "parallel_processing_time": parallel_processing_time,
+    }
